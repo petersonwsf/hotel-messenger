@@ -12,6 +12,11 @@
  *    broken state.
  *  - Secrets are never re-exported as plain strings accessible to logging.
  *  - `dotenv` is loaded here so callers don't need to call `config()` themselves.
+ *
+ * Architecture note:
+ *  The service now binds to a single **topic exchange** (RABBITMQ_EXCHANGE)
+ *  and uses routing key patterns `payment.*` and `reservation.*` to receive
+ *  events from both the Payments Service and the Hospitality Service.
  */
 
 import 'dotenv/config';
@@ -29,13 +34,33 @@ const envSchema = z.object({
     .startsWith('amqp', 'RABBITMQ_URL must start with amqp:// or amqps://'),
 
   /**
-   * Main queue name. The DLQ will be named <RABBITMQ_QUEUE>_dlq automatically.
+   * Topic exchange name that both the Payments and Hospitality Services publish to.
+   * Default: hotel_events
+   */
+  RABBITMQ_EXCHANGE: z
+    .string()
+    .min(1)
+    .default('hotel_events'),
+
+  /**
+   * Consumer queue name. The DLQ is derived as <RABBITMQ_QUEUE>_dlq automatically.
    * Default: email_notifications
    */
   RABBITMQ_QUEUE: z
     .string()
     .min(1)
     .default('email_notifications'),
+
+  /**
+   * Maximum number of unacknowledged messages per channel (back-pressure).
+   * Default: 1 (process one message at a time, safest for exactly-once semantics).
+   */
+  RABBITMQ_PREFETCH_COUNT: z
+    .string()
+    .regex(/^\d+$/, 'RABBITMQ_PREFETCH_COUNT must be a positive integer')
+    .transform(Number)
+    .pipe(z.number().int().positive())
+    .default('1'),
 
   /** Resend API key — must NOT be logged. */
   RESEND_API_KEY: z
@@ -93,3 +118,16 @@ export const QUEUE_NAMES = {
   dlq:  `${env.RABBITMQ_QUEUE}_dlq`,
   dlx:  `${env.RABBITMQ_QUEUE}_dlx`,
 } as const;
+
+/**
+ * Routing key patterns this consumer binds to on the topic exchange.
+ * Pattern `payment.*`     → all events from the Payments Service.
+ * Pattern `reservation.*` → all events from the Hospitality Service.
+ */
+export const ROUTING_KEYS = {
+  payments:    'payment.*',
+  reservations: 'reservation.*',
+} as const;
+
+export type RoutingKey = (typeof ROUTING_KEYS)[keyof typeof ROUTING_KEYS];
+
