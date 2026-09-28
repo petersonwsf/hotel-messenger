@@ -3,17 +3,6 @@
  *
  * Adapters that transform incoming domain events (from Payments and Hospitality
  * Services) into the internal `EmailEvent` type consumed by the email pipeline.
- *
- * Adapter pattern rationale:
- *  - The `EmailEvent` union (emailSchema.ts) is the internal contract of this service.
- *  - External contracts (paymentSchema, reservationSchema) are the upstream contracts.
- *  - Adapters live at the boundary — they isolate internal types from upstream churn.
- *
- * Each adapter:
- *  1. Receives a strongly-typed external event.
- *  2. Maps its fields to the internal EmailEvent structure.
- *  3. Throws `AdapterError` for cases where required data is missing
- *     (e.g. unrecognised PaymentEventType → no email to send).
  */
 
 import {
@@ -53,10 +42,9 @@ export class AdapterError extends Error {
 /**
  * Maps a `PaymentEventEnvelope` to an internal `PagamentoRecebidoEvent`.
  *
- * Only `PAYMENT_CAPTURED` events trigger an email — other statuses (authorized,
- * failed, refunded) are acknowledged silently without dispatch.
- *
- * @throws `AdapterError` if the event type does not have a corresponding email.
+ * `PAYMENT_CAPTURED` events trigger an email receipt using `amountCaptured`.
+ * Other events (created, authorized, canceled, failed, refunded, boleto) are
+ * acknowledged silently without sending an email.
  */
 export function adaptPaymentEvent(
   envelope: PaymentEventEnvelope,
@@ -66,15 +54,12 @@ export function adaptPaymentEvent(
   switch (eventType) {
     case PaymentEventType.PAYMENT_CAPTURED: {
       const event: PagamentoRecebidoEvent = {
-        // Internal idempotency key — use the upstream eventId as messageId
         messageId:       eventId,
         eventType:       EmailEventType.PAGAMENTO_RECEBIDO,
-        // Recipient data (Gap P-1 / P-2 fields from CONTRACT_REPORT.md)
         to:              data.recipientEmail,
         guestName:       data.recipientName,
-        // Booking / payment details
         reservationCode: String(data.reservationId),
-        amountCents:     data.amountCaptured,
+        amountCents:     data.amountCaptured, // charged amount
         currency:        data.currency,
         paymentMethod:   data.paymentMethodLabel,
         paidAt:          occurredAt,
@@ -82,19 +67,17 @@ export function adaptPaymentEvent(
       return event;
     }
 
-    // These event types are valid but do not trigger an email notification.
+    case PaymentEventType.PAYMENT_CREATED:
+    case PaymentEventType.PAYMENT_REQUIRES_ACTION:
     case PaymentEventType.PAYMENT_AUTHORIZED:
+    case PaymentEventType.PAYMENT_CANCELED:
     case PaymentEventType.PAYMENT_FAILED:
     case PaymentEventType.PAYMENT_REFUNDED:
-      return null; // caller will ack silently
+    case PaymentEventType.BOLETO_GENERATED:
+      return null; // acknowledge silently without dispatching email
 
     default: {
-      // TypeScript exhaustiveness guard
-      const _exhaustive: never = eventType;
-      throw new AdapterError(
-        `No email mapping defined for payment event type "${String(_exhaustive)}"`,
-        String(_exhaustive),
-      );
+      return null; // acknowledge unhandled event types silently
     }
   }
 }
@@ -105,64 +88,55 @@ export function adaptPaymentEvent(
 
 /**
  * Maps a `ReservationMessageEnvelope` to an internal `EmailEvent`.
- *
- * @throws `AdapterError` if required booking fields are missing for the event type.
  */
 export function adaptReservationEvent(
   envelope: ReservationMessageEnvelope,
 ): EmailEvent | null {
   const { eventId, eventType, data } = envelope;
-  const { user, reservationCode } = data;
 
   const base = {
     messageId: eventId,
-    to:        user.resolvedEmail,  // resolved by the Zod transform in reservationSchema.ts
-    guestName: user.name,
+    to:        data.resolvedEmail,
+    guestName: data.resolvedName,
   };
 
-  switch (eventType) {
-    case ReservationEventType.RESERVA_CONFIRMADA: {
-      // Validate that all required booking fields are present
-      if (!data.checkIn || !data.checkOut || !data.totalNights || !data.roomType) {
-        throw new AdapterError(
-          `RESERVA_CONFIRMADA event is missing required booking fields. ` +
-          `Received: checkIn=${data.checkIn}, checkOut=${data.checkOut}, ` +
-          `totalNights=${data.totalNights}, roomType=${data.roomType}. ` +
-          `See CONTRACT_REPORT.md Gap H-2.`,
-          eventType,
-        );
-      }
+  const typeStr = String(eventType);
 
-      const event: ReservaConfirmadaEvent = {
-        ...base,
-        eventType:       EmailEventType.RESERVA_CONFIRMADA,
-        reservationCode,
-        checkIn:         data.checkIn,
-        checkOut:        data.checkOut,
-        roomType:        data.roomType,
-        totalNights:     data.totalNights,
-      };
-      return event;
-    }
-
-    case ReservationEventType.RESERVA_CANCELADA: {
-      const event: ReservaCanceladaEvent = {
-        ...base,
-        eventType:          EmailEventType.RESERVA_CANCELADA,
-        reservationCode,
-        cancellationReason: data.cancellationReason,
-        refundAmountCents:  data.refundAmountCents,
-        refundCurrency:     data.refundCurrency,
-      };
-      return event;
-    }
-
-    default: {
-      const _exhaustive: never = eventType;
-      throw new AdapterError(
-        `No email mapping defined for reservation event type "${String(_exhaustive)}"`,
-        String(_exhaustive),
-      );
-    }
+  if (
+    typeStr === ReservationEventType.RESERVA_CONFIRMADA ||
+    typeStr === ReservationEventType.RESERVA_CRIADA ||
+    typeStr === 'reservation.confirmed' ||
+    typeStr === 'reservation.created'
+  ) {
+    const event: ReservaConfirmadaEvent = {
+      ...base,
+      eventType:       EmailEventType.RESERVA_CONFIRMADA,
+      reservationCode: data.reservationCode,
+      checkIn:         data.checkIn,
+      checkOut:        data.checkOut,
+      roomType:        data.roomType,
+      totalNights:     data.totalNights,
+    };
+    return event;
   }
+
+  if (
+    typeStr === ReservationEventType.RESERVA_CANCELADA ||
+    typeStr === ReservationEventType.RESERVA_CANCELED ||
+    typeStr === 'reservation.cancelled' ||
+    typeStr === 'reservation.canceled'
+  ) {
+    const event: ReservaCanceladaEvent = {
+      ...base,
+      eventType:          EmailEventType.RESERVA_CANCELADA,
+      reservationCode:    data.reservationCode,
+      cancellationReason: data.cancellationReason,
+      refundAmountCents:  data.refundAmountCents,
+      refundCurrency:     data.refundCurrency,
+    };
+    return event;
+  }
+
+  // Unknown/unhandled reservation events acknowledge silently
+  return null;
 }

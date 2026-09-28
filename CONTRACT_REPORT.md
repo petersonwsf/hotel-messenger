@@ -1,205 +1,140 @@
-# CONTRACT_REPORT.md — Gap Analysis for External Service Payloads
+# CONTRACT_REPORT.md — Relatório de Contratos e DTOs de Integração
 
-**Document type:** Contract Gap Analysis
-**Author:** hotel_messenger team
-**Date:** 2026-09-28
-**Scope:** Payments Service & Hospitality Service payloads consumed by the Transactional Email Microservice
-
----
-
-## 1. Executive Summary
-
-The Transactional Email Microservice consumes events from two upstream producers:
-
-| Service | Language/Framework | Transport |
-|---|---|---|
-| Payments Service | Node.js / TypeScript | RabbitMQ topic exchange, routing key `payment.*` |
-| Hospitality Service | Java / Spring Boot | RabbitMQ topic exchange, routing key `reservation.*` |
-
-After reviewing the proposed payload contracts against the email dispatch requirements (recipient address, personalisation data, and template variables), **two structural gaps** were identified — one critical and one minor. Both require changes to upstream producers before the notification service can dispatch emails without additional HTTP callbacks or database reads.
+**Documento:** Análise de Lacunas e DTOs de Integração
+**Serviço:** Microserviço de E-mail (hotel_messenger)
+**Data:** 2026-09-28
+**Escopo:** Integração de eventos entre `payments-service` (Node.js), `hospitality-service` (Spring Boot Java) e `hotel_messenger` (Node.js).
 
 ---
 
-## 2. Gap Analysis — Payments Service
+## 1. Visão Geral dos Eventos e Transportes
 
-### 2.1 Payload reviewed
-
-```typescript
-// PaymentDataBase (payments-service)
-export interface PaymentDataBase {
-  paymentId: number;
-  reservationId: number;
-  userId: number;
-  stripePaymentIntentId: string;
-  amountAuthorized: number;
-  amountCaptured: number;
-  currency: string;
-  status: PaymentStatus;
-  captureMethod: CaptureMethod;
-  createdAt: string;
-  updatedAt: string;
-}
-```
-
-### 2.2 Identified gaps
-
-| # | Gap | Severity | Required for |
+| Serviço Emissor | Linguagem | Exchange (RabbitMQ) | Routing Keys Suportadas |
 |---|---|---|---|
-| P-1 | **No recipient email address.** `PaymentDataBase` contains `userId` but no `email` field. The notification service cannot dispatch a payment email without knowing where to send it. | 🔴 **Critical** | `sendEmail({ to })` |
-| P-2 | **No guest / cardholder name.** Templates use `guestName` for personalisation (e.g. "Olá, João"). `userId` is a foreign key that cannot be resolved without a DB call. | 🟡 **High** | Handlebars `{{guestName}}` |
-| P-3 | **`amountAuthorized` vs `amountCaptured` ambiguity.** The email receipt should show the amount actually charged. The contract exposes both; it is unclear which should be used. | 🟠 **Medium** | `PAGAMENTO_RECEBIDO` template |
-| P-4 | **No human-readable payment method.** `captureMethod` is an internal enum (`AUTOMATIC`, `MANUAL`). Templates need a displayable label like "Cartão de Crédito" or "Pix". | 🟠 **Medium** | `PAGAMENTO_RECEBIDO` template |
-
-### 2.3 Proposed changes to `PaymentDataBase`
-
-```typescript
-export interface PaymentDataBase {
-  paymentId: number;
-  reservationId: number;
-  userId: number;
-
-  // --- NEW FIELDS REQUIRED BY NOTIFICATION SERVICE ---
-
-  /** Recipient email address. Sourced from the user record at publish time. */
-  recipientEmail: string;          // Gap P-1 ✅
-
-  /** Guest full name for email personalisation. */
-  recipientName: string;           // Gap P-2 ✅
-
-  /** Human-readable payment method label shown in the receipt email. */
-  paymentMethodLabel: string;      // Gap P-4 ✅ (e.g. "Pix", "Cartão de Crédito")
-
-  // --- EXISTING FIELDS ---
-  stripePaymentIntentId: string;
-  amountAuthorized: number;
-  amountCaptured: number;          // Gap P-3: email uses amountCaptured
-  currency: string;
-  status: PaymentStatus;
-  captureMethod: CaptureMethod;
-  createdAt: string;
-  updatedAt: string;
-}
-```
-
-> **Justification:** The notification service operates as a pure consumer with no read access to the user database or the payments database. Embedding `recipientEmail` and `recipientName` in the event payload at publish time is the standard EDA pattern — the producer holds the data at the moment of the event and should denormalise it for downstream consumers. This avoids tight coupling and avoids HTTP round-trips in the hot path.
+| **Payments Service** | Node.js / TS | `hotel.events` (topic) | `payment.*` (ex: `payment.captured`, `payment.authorized`, `boleto.generated`) |
+| **Hospitality Service** | Java / Spring Boot | `hotel.events` (topic) | `reservation.*` (ex: `reservation.created`, `reservation.confirmed`, `reservation.cancelled`) |
 
 ---
 
-## 3. Gap Analysis — Hospitality Service
+## 2. DTO do Serviço de Pagamentos (`payments-service`)
 
-### 3.1 Payload reviewed
+### 2.1 Mapeamentos e Regras Ajustadas no Sistema de E-mail:
+1. **Valor cobrado no e-mail:** É utilizado o campo `amountCaptured` (em centavos).
+2. **Método de Pagamento (`captureMethod`):**
+   - `'AUTOMATIC'` → Traduzido automaticamente para **"Boleto"** (ou "Boleto bancário").
+   - `'MANUAL'` → Traduzido automaticamente para **"Cartão de crédito"**.
+   - Se o campo `paymentMethodLabel` for enviado explicitamente, ele terá prioridade.
+3. **Dados do Cliente:** O evento de pagamento deve conter o e-mail e o nome do cliente (`recipientEmail` e `recipientName` ou `email`/`name`).
 
+### 2.2 Enums do Serviço de Pagamentos:
 ```typescript
-// UserResponseDTO (hospitality-service)
-export interface UserResponseDTO {
-  id: number;
-  name: string;
-  login: string;      // ← ambiguous: is this the email address?
-  phoneNumber: string;
-  role: string;
-  imageKey: string;
-}
-
-// ReservationDataMessage (hospitality-service)
-export interface ReservationDataMessage {
-  id: number;
-  user: UserResponseDTO;
+export enum PaymentEventType {
+  PAYMENT_CREATED         = 'payment.created',
+  PAYMENT_REQUIRES_ACTION = 'payment.requires_action',
+  PAYMENT_AUTHORIZED      = 'payment.authorized',
+  PAYMENT_CAPTURED        = 'payment.captured',
+  PAYMENT_CANCELED        = 'payment.canceled',
+  PAYMENT_FAILED          = 'payment.failed',
+  PAYMENT_REFUNDED        = 'payment.refunded',
+  BOLETO_GENERATED        = 'boleto.generated',
 }
 ```
 
-### 3.2 Identified gaps
+### 2.3 Estrutura Recomendada do DTO Publicado (`payment.captured`):
+```json
+{
+  "eventId": "550e8400-e29b-41d4-a716-446655440000",
+  "eventType": "payment.captured",
+  "eventVersion": "1.0",
+  "occurredAt": "2026-09-28T20:00:00.000Z",
+  "source": "payments-service",
+  "data": {
+    "paymentId": 101,
+    "reservationId": 42,
+    "userId": 7,
+    "recipientEmail": "cliente@email.com",
+    "recipientName": "Nome do Cliente",
+    "amountAuthorized": 15000,
+    "amountCaptured": 15000,
+    "currency": "BRL",
+    "status": "CAPTURED",
+    "captureMethod": "MANUAL",
+    "createdAt": "2026-09-28T20:00:00.000Z",
+    "updatedAt": "2026-09-28T20:00:00.000Z"
+  }
+}
+```
 
-| # | Gap | Severity | Required for |
-|---|---|---|---|
-| H-1 | **`login` field is ambiguous.** In Spring Boot's `UserDetails`, `getUsername()` returns the login/username, which in many systems _is_ the email but is not guaranteed. The field name `login` does not communicate this clearly. | 🟡 **High** | `sendEmail({ to })` |
-| H-2 | **No reservation-specific data in `ReservationDataMessage`.** For `RESERVA_CONFIRMADA`, the template requires `checkIn`, `checkOut`, `roomType`, `totalNights`, `reservationCode`. None of these are present. | 🔴 **Critical** | `RESERVA_CONFIRMADA` template |
-| H-3 | **`eventType` is `string` instead of a typed enum.** The envelope defines `eventType: string`, making exhaustiveness checks impossible and allowing undocumented routing keys to arrive silently. | 🟠 **Medium** | Message router type-safety |
+---
 
-### 3.3 Proposed changes
+## 3. DTO do Serviço de Reserva (`hospitality-service` - Java/Spring Boot)
 
-#### 3.3.1 Rename `login` → `email` in `UserResponseDTO`
+### 3.1 Estrutura da Reserva na Base de Dados:
+A reserva na base possui os seguintes campos nativos:
+`id`, `check_in_date`, `check_out_date`, `daily_rate`, `total_amount`, `discount_amount`, `service_fee`, `status_reservation`, `created_at`, `updated_at`, `user_id`, `room_id`.
+
+### 3.2 Regras do Sistema de E-mail para Reservas:
+1. **Código da Reserva:** Como a tabela não possui uma coluna `code`, o sistema gera automaticamente `#<id>` (ex: `#1042`).
+2. **Cálculo de Diárias (`totalNights`):** O sistema calcula automaticamente o total de noites a partir da diferença entre `check_in_date` e `check_out_date`.
+3. **E-mail e Nome do Hóspede:** O sistema aceita tanto o DTO aninhado `user: { id, name, email }` (ou `login`) quanto campos no topo (`email`, `name`).
+
+### 3.3 Enums do Serviço de Reserva:
+```java
+// Java Enum / Event Types
+"reservation.confirmed" / "reservation.created"
+"reservation.cancelled" / "reservation.canceled"
+```
+
+### 3.4 Estrutura Recomendada do DTO Publicado no Java (Spring Boot):
 
 ```java
-// Java DTO — UserResponseDTO.java
+// DTO em Java a ser serializado em JSON para a fila RabbitMQ
+public class ReservationEventEnvelope {
+    private String eventId;             // UUID ex: "660e8400-e29b-41d4-a716-446655440001"
+    private String eventType;           // "reservation.confirmed" ou "reservation.cancelled"
+    private String eventVersion;        // "1.0"
+    private String occurredAt;          // ISO-8601 ex: "2026-09-28T20:00:00Z"
+    private String source;              // "hospitality-service"
+    private ReservationDataMessage data;
+}
+
+public class ReservationDataMessage {
+    private Long id;
+    private String check_in_date;       // Formato "YYYY-MM-DD"
+    private String check_out_date;      // Formato "YYYY-MM-DD"
+    private BigDecimal daily_rate;
+    private BigDecimal total_amount;
+    private BigDecimal discount_amount;
+    private BigDecimal service_fee;
+    private String status_reservation;  // Ex: "CONFIRMED", "CANCELLED"
+    private String created_at;
+    private String updated_at;
+    private Long user_id;
+    private Long room_id;
+
+    // Dados do usuário (UserResponseDTO)
+    private UserResponseDTO user;
+}
+
 public class UserResponseDTO {
     private Long id;
     private String name;
-    private String email;          // RENAMED from 'login' — Gap H-1 ✅
+    private String email;              // ou 'login' contendo um e-mail válido
     private String phoneNumber;
     private String role;
-    private String imageKey;
-}
-```
-
-> If renaming is not possible (e.g. `login` is a public API contract), add an explicit `email` field derived from the Spring Security `UserDetails.getUsername()` at serialisation time.
-
-#### 3.3.2 Enrich `ReservationDataMessage` with booking details
-
-```java
-// Java DTO — ReservationDataMessage.java  (Gap H-2 ✅)
-public class ReservationDataMessage {
-    private Long id;                        // reservation internal ID
-    private String reservationCode;         // human-readable code, e.g. "RES-2026-0042"
-    private UserResponseDTO user;
-    private LocalDate checkIn;
-    private LocalDate checkOut;
-    private Integer totalNights;
-    private String roomType;
-    // For cancellations:
-    private String cancellationReason;      // nullable
-    private Long refundAmountCents;         // nullable
-    private String refundCurrency;          // nullable, ISO 4217
-}
-```
-
-#### 3.3.3 Type the `eventType` field with an enum
-
-```typescript
-// TypeScript contract (Gap H-3 ✅)
-export enum ReservationEventType {
-  RESERVA_CONFIRMADA = 'reservation.confirmed',
-  RESERVA_CANCELADA  = 'reservation.cancelled',
-}
-
-export interface ReservationMessageEnvelope<T = ReservationDataMessage> {
-  eventId: string;
-  eventType: ReservationEventType;   // was: string
-  eventVersion: string;
-  occurredAt: string;
-  source: string;
-  correlationId?: string;
-  data: T;
 }
 ```
 
 ---
 
-## 4. Decision: `login` field interim handling
+## 4. Resumo das Modificações Realizadas no `hotel_messenger`
 
-Until the Hospitality Service publishes a renamed `email` field, the notification service will:
-
-1. **Prefer `data.user.email`** if present (forward-compatible with the proposed fix).
-2. **Fall back to `data.user.login`** if `email` is absent and `login` is a valid RFC 5322 email address (validated by Zod).
-3. **Nack to DLQ** if neither field is a valid email — a clear, observable failure that surfaces the missing data rather than silently discarding the notification.
-
-This logic is implemented in `src/schemas/reservationSchema.ts` (transform step) and documented inline.
-
----
-
-## 5. Impact Summary
-
-| Service | Change required | Breaking? | Notification service blocks? |
-|---|---|---|---|
-| Payments Service | Add `recipientEmail`, `recipientName`, `paymentMethodLabel` to `PaymentDataBase` | No (additive) | ✅ Yes — cannot send emails without |
-| Hospitality Service | Rename `login` → `email` **or** add explicit `email` field | No (additive) | ✅ Yes (mitigated by fallback) |
-| Hospitality Service | Enrich `ReservationDataMessage` with booking fields | No (additive) | ✅ Yes — templates cannot render |
-| Hospitality Service | Type `eventType` with enum | No (additive) | No — handled via string mapping |
-
----
-
-## 6. Recommended Next Steps
-
-1. **[Payments Team]** Add `recipientEmail`, `recipientName`, `paymentMethodLabel` to the `PAYMENT_CAPTURED` event publisher.
-2. **[Hospitality Team]** Add `email` field (or rename `login`) and add booking fields to `ReservationDataMessage`.
-3. **[Both Teams]** Update OpenAPI/AsyncAPI specs and notify the notification team.
-4. **[Notification Team]** Remove the `login`-fallback once the `email` field is confirmed live.
+1. **Ajuste de Valor em Pagamentos:** O e-mail de comprovante utiliza estritamente `amountCaptured`.
+2. **Mapeamento Automático de `captureMethod`:**
+   - `AUTOMATIC` → Exibe **Boleto** no e-mail.
+   - `MANUAL` → Exibe **Cartão de crédito** no e-mail.
+3. **Adaptação Completa dos Campos da Reserva:**
+   - Suporte total às colunas da tabela de reserva (`check_in_date`, `check_out_date`, `room_id`, `id`).
+   - Cálculo automático de noites (`totalNights`).
+   - Geração automática de código legível (`#<id>`).
+4. **Resolução Flexível de E-mail/Nome:** Aceita tanto DTO aninhado `user` quanto campos no topo (`email`/`name`), com fallback automático de `login` para `email`.

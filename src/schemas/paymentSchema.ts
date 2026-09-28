@@ -6,13 +6,6 @@
  * Contract source:  payments-service (Node.js / TypeScript)
  * Transport:        RabbitMQ topic exchange, routing key pattern `payment.*`
  * Idempotency key:  envelope.eventId (UUID)
- *
- * ⚠️  CONTRACT GAP NOTE (see CONTRACT_REPORT.md §2)
- *     Fields `recipientEmail`, `recipientName`, and `paymentMethodLabel` were
- *     PROPOSED additions to `PaymentDataBase`.  Until the Payments Service
- *     publishes these fields the notification service CANNOT send emails and
- *     will nack matching messages to the DLQ.  The schemas below validate their
- *     presence so failures are observable rather than silent.
  */
 
 import { z } from 'zod';
@@ -22,12 +15,13 @@ import { z } from 'zod';
 // ---------------------------------------------------------------------------
 
 export enum PaymentStatus {
-  PENDING   = 'PENDING',
+  PENDING    = 'PENDING',
   AUTHORIZED = 'AUTHORIZED',
-  CAPTURED  = 'CAPTURED',
-  FAILED    = 'FAILED',
-  REFUNDED  = 'REFUNDED',
-  CANCELLED = 'CANCELLED',
+  CAPTURED   = 'CAPTURED',
+  FAILED     = 'FAILED',
+  REFUNDED   = 'REFUNDED',
+  CANCELLED  = 'CANCELLED',
+  CANCELED   = 'CANCELED',
 }
 
 export enum CaptureMethod {
@@ -36,56 +30,81 @@ export enum CaptureMethod {
 }
 
 export enum PaymentEventType {
-  PAYMENT_AUTHORIZED = 'payment.authorized',
-  PAYMENT_CAPTURED   = 'payment.captured',
-  PAYMENT_FAILED     = 'payment.failed',
-  PAYMENT_REFUNDED   = 'payment.refunded',
+  PAYMENT_CREATED         = 'payment.created',
+  PAYMENT_REQUIRES_ACTION = 'payment.requires_action',
+  PAYMENT_AUTHORIZED      = 'payment.authorized',
+  PAYMENT_CAPTURED        = 'payment.captured',
+  PAYMENT_CANCELED        = 'payment.canceled',
+  PAYMENT_FAILED          = 'payment.failed',
+  PAYMENT_REFUNDED        = 'payment.refunded',
+  BOLETO_GENERATED        = 'boleto.generated',
 }
 
 // ---------------------------------------------------------------------------
 // PaymentDataBase schema
 // ---------------------------------------------------------------------------
 
-export const paymentDataBaseSchema = z.object({
-  paymentId:             z.number().int().positive(),
-  reservationId:         z.number().int().positive(),
-  userId:                z.number().int().positive(),
-  stripePaymentIntentId: z.string().min(1),
+export const paymentDataBaseSchema = z
+  .object({
+    paymentId:             z.number().int().positive(),
+    reservationId:         z.number().int().positive(),
+    userId:                z.number().int().positive(),
+    stripePaymentIntentId: z.string().optional(),
 
-  /**
-   * ⚠️  REQUIRED by notification service — proposed addition to upstream contract.
-   *     See CONTRACT_REPORT.md Gap P-1.
-   */
-  recipientEmail: z.string().email('recipientEmail must be a valid email address'),
+    /** Customer email address (supports recipientEmail, email, or customerEmail). */
+    recipientEmail: z.string().email().optional(),
+    email:          z.string().email().optional(),
+    customerEmail:  z.string().email().optional(),
 
-  /**
-   * ⚠️  REQUIRED by notification service — proposed addition to upstream contract.
-   *     See CONTRACT_REPORT.md Gap P-2.
-   */
-  recipientName: z.string().min(1, 'recipientName must not be empty'),
+    /** Customer full name (supports recipientName, name, or customerName). */
+    recipientName: z.string().optional(),
+    name:          z.string().optional(),
+    customerName:  z.string().optional(),
 
-  /**
-   * ⚠️  REQUIRED by notification service — proposed addition to upstream contract.
-   *     See CONTRACT_REPORT.md Gap P-4.
-   *     Example values: "Pix", "Cartão de Crédito", "Boleto".
-   */
-  paymentMethodLabel: z.string().min(1, 'paymentMethodLabel must not be empty'),
+    /** Optional human-readable payment method label. */
+    paymentMethodLabel: z.string().optional(),
 
-  /** Amount actually captured (used in receipt email). See CONTRACT_REPORT.md Gap P-3. */
-  amountAuthorized: z.number().int().nonnegative(),
-  /** Use this field for the email receipt — the amount the customer was charged. */
-  amountCaptured:   z.number().int().nonnegative(),
-  /** ISO 4217 currency code (e.g. "BRL", "USD"). */
-  currency: z.string().length(3),
+    /** Amounts in cents. amountCaptured is used as the email charged amount. */
+    amountAuthorized: z.number().int().nonnegative().optional(),
+    amountCaptured:   z.number().int().nonnegative(),
+    /** ISO 4217 currency code (e.g. "BRL", "USD"). */
+    currency:         z.string().length(3).default('BRL'),
 
-  status:        z.nativeEnum(PaymentStatus),
-  captureMethod: z.nativeEnum(CaptureMethod),
+    status:        z.nativeEnum(PaymentStatus).or(z.string()),
+    captureMethod: z.nativeEnum(CaptureMethod).or(z.string()),
 
-  /** ISO-8601 datetime string. */
-  createdAt: z.string().datetime(),
-  /** ISO-8601 datetime string. */
-  updatedAt: z.string().datetime(),
-});
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .transform((data) => {
+    const resolvedEmail = data.recipientEmail ?? data.email ?? data.customerEmail;
+    if (!resolvedEmail || !z.string().email().safeParse(resolvedEmail).success) {
+      throw new Error(
+        'Payment payload missing valid recipient email (recipientEmail, email, or customerEmail required)',
+      );
+    }
+    const resolvedName = data.recipientName ?? data.name ?? data.customerName ?? 'Cliente';
+
+    // Automatic captureMethod label mapping:
+    // AUTOMATIC = Boleto, MANUAL = Cartão de crédito
+    let resolvedMethod = data.paymentMethodLabel;
+    if (!resolvedMethod) {
+      if (data.captureMethod === CaptureMethod.AUTOMATIC || data.captureMethod === 'AUTOMATIC') {
+        resolvedMethod = 'Boleto';
+      } else if (data.captureMethod === CaptureMethod.MANUAL || data.captureMethod === 'MANUAL') {
+        resolvedMethod = 'Cartão de crédito';
+      } else {
+        resolvedMethod = 'Cartão de crédito';
+      }
+    }
+
+    return {
+      ...data,
+      recipientEmail:     resolvedEmail,
+      recipientName:      resolvedName,
+      paymentMethodLabel: resolvedMethod,
+    };
+  });
 
 export type PaymentDataBase = z.infer<typeof paymentDataBaseSchema>;
 
@@ -93,27 +112,19 @@ export type PaymentDataBase = z.infer<typeof paymentDataBaseSchema>;
 // PaymentEventEnvelope schema
 // ---------------------------------------------------------------------------
 
-/**
- * Generic payment event envelope.
- * Every message published by the Payments Service must conform to this shape.
- */
 export const paymentEventEnvelopeSchema = z.object({
   /** Unique event identifier (UUID v4). Used as the idempotency key. */
   eventId:      z.string().uuid('eventId must be a valid UUID v4'),
   eventType:    z.nativeEnum(PaymentEventType),
   eventVersion: z.string().min(1),
   /** ISO-8601 datetime when the event occurred. */
-  occurredAt:   z.string().datetime(),
-  source: z.literal('payments-service'),
+  occurredAt:   z.string(),
+  source:       z.literal('payments-service'),
   correlationId: z.string().uuid().optional(),
   data: paymentDataBaseSchema,
 });
 
 export type PaymentEventEnvelope = z.infer<typeof paymentEventEnvelopeSchema>;
-
-// ---------------------------------------------------------------------------
-// Typed helper — narrow to a specific event type
-// ---------------------------------------------------------------------------
 
 export type PaymentEventEnvelopeOf<T extends PaymentEventType> =
   Omit<PaymentEventEnvelope, 'eventType'> & { eventType: T };
