@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confirmação de Reserva</title>
+  <style>
+    /* Reset */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background-color: #f4f5f7; font-family: 'Helvetica Neue', Arial, sans-serif; color: #2d3748; }
+
+    /* Wrapper */
+    .wrapper { max-width: 620px; margin: 0 auto; padding: 32px 16px; }
+
+    /* Card */
+    .card { background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+
+    /* Header */
+    .header { background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%); padding: 40px 40px 32px; text-align: center; }
+    .header .logo-text { font-size: 22px; font-weight: 700; color: #bee3f8; letter-spacing: 0.08em; text-transform: uppercase; }
+    .header h1 { font-size: 26px; font-weight: 700; color: #ffffff; margin-top: 12px; line-height: 1.3; }
+    .header .badge { display: inline-block; background: rgba(255,255,255,0.15); color: #bee3f8; border-radius: 999px; font-size: 12px; font-weight: 600; padding: 4px 14px; margin-top: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+
+    /* Body */
+    .body { padding: 36px 40px; }
+    .greeting { font-size: 17px; color: #4a5568; line-height: 1.6; margin-bottom: 28px; }
+    .greeting strong { color: #1a365d; }
+
+    /* Info card */
+    .info-grid { background: #ebf8ff; border: 1px solid #bee3f8; border-radius: 10px; padding: 24px; margin-bottom: 28px; }
+    .info-grid .info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #bee3f8; }
+    .info-grid .info-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .info-label { font-size: 12px; font-weight: 600; color: #2b6cb0; text-transform: uppercase; letter-spacing: 0.06em; }
+    .info-value { font-size: 15px; font-weight: 600; color: #1a365d; text-align: right; }
+
+    /* Reservation code highlight */
+    .res-code-block { text-align: center; background: #1a365d; border-radius: 10px; padding: 20px; margin-bottom: 28px; }
+    .res-code-label { font-size: 11px; font-weight: 700; color: #90cdf4; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+    .res-code { font-size: 28px; font-weight: 800; color: #ffffff; letter-spacing: 0.12em; font-family: 'Courier New', monospace; }
+
+    /* Footer note */
+    .note { font-size: 14px; color: #718096; line-height: 1.7; margin-bottom: 16px; }
+
+    /* Footer */
+    .footer { background: #f7fafc; border-top: 1px solid #e2e8f0; padding: 24px 40px; text-align: center; }
+    .footer p { font-size: 12px; color: #a0aec0; line-height: 1.6; }
+    .footer a { color: #2b6cb0; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="card">
+
+      <!-- Header -->
+      <div class="header">
+        <div class="logo-text">🏨 Grand Hotel</div>
+        <h1>Sua Reserva está Confirmada!</h1>
+        <span class="badge">✓ Confirmado</span>
+      </div>
+
+      <!-- Body -->
+      <div class="body">
+
+        <p class="greeting">
+          Olá, <strong>{{guestName}}</strong>!<br/>
+          Estamos muito felizes em recebê-lo. Sua reserva foi confirmada com sucesso.
+          Abaixo estão todos os detalhes da sua estadia.
+        </p>
+
+        <!-- Reservation code -->
+        <div class="res-code-block">
+          <div class="res-code-label">Código da Reserva</div>
+          <div class="res-code">{{reservationCode}}</div>
+        </div>
+
+        <!-- Details grid -->
+        <div class="info-grid">
+          <div class="info-row">
+            <span class="info-label">Tipo de Quarto</span>
+            <span class="info-value">{{roomType}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Check-in</span>
+            <span class="info-value">{{checkIn}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Check-out</span>
+            <span class="info-value">{{checkOut}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Total de Diárias</span>
+            <span class="info-value">{{totalNights}} noite{{#if (gt totalNights 1)}}s{{/if}}</span>
+          </div>
+        </div>
+
+        <p class="note">
+          Por favor, guarde o <strong>Código da Reserva</strong> acima — você precisará dele
+          no momento do check-in. Nossa equipe estará à disposição para garantir uma
+          estadia inesquecível.
+        </p>
+
+        <p class="note">
+          Se precisar alterar ou cancelar sua reserva, entre em contato conosco com
+          pelo menos 48 horas de antecedência.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>
+          Este é um e-mail automático. Por favor, não responda.<br/>
+          © {{currentYear}} Grand Hotel. Todos os direitos reservados.<br/>
+          <a href="#">Política de Privacidade</a> · <a href="#">Termos de Uso</a>
+        </p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

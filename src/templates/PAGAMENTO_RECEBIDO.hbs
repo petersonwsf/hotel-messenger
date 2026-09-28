@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pagamento Recebido</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background-color: #f4f5f7; font-family: 'Helvetica Neue', Arial, sans-serif; color: #2d3748; }
+
+    .wrapper { max-width: 620px; margin: 0 auto; padding: 32px 16px; }
+    .card { background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+
+    /* Header — green palette for "success/payment" */
+    .header { background: linear-gradient(135deg, #1c4532 0%, #276749 100%); padding: 40px 40px 32px; text-align: center; }
+    .header .logo-text { font-size: 22px; font-weight: 700; color: #9ae6b4; letter-spacing: 0.08em; text-transform: uppercase; }
+    .header h1 { font-size: 26px; font-weight: 700; color: #ffffff; margin-top: 12px; line-height: 1.3; }
+    .header .badge { display: inline-block; background: rgba(255,255,255,0.15); color: #9ae6b4; border-radius: 999px; font-size: 12px; font-weight: 600; padding: 4px 14px; margin-top: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+
+    .body { padding: 36px 40px; }
+    .greeting { font-size: 17px; color: #4a5568; line-height: 1.6; margin-bottom: 28px; }
+    .greeting strong { color: #1c4532; }
+
+    /* Amount highlight */
+    .amount-block { text-align: center; background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%); border: 2px solid #9ae6b4; border-radius: 12px; padding: 24px; margin-bottom: 28px; }
+    .amount-label { font-size: 12px; font-weight: 700; color: #276749; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+    .amount-value { font-size: 38px; font-weight: 800; color: #1c4532; }
+    .amount-currency { font-size: 18px; font-weight: 600; color: #276749; vertical-align: super; margin-right: 4px; }
+
+    .info-grid { background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 10px; padding: 24px; margin-bottom: 28px; }
+    .info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #c6f6d5; }
+    .info-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .info-label { font-size: 12px; font-weight: 600; color: #276749; text-transform: uppercase; letter-spacing: 0.06em; }
+    .info-value { font-size: 15px; font-weight: 600; color: #1c4532; text-align: right; }
+
+    .note { font-size: 14px; color: #718096; line-height: 1.7; margin-bottom: 16px; }
+
+    .footer { background: #f7fafc; border-top: 1px solid #e2e8f0; padding: 24px 40px; text-align: center; }
+    .footer p { font-size: 12px; color: #a0aec0; line-height: 1.6; }
+    .footer a { color: #276749; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="card">
+
+      <!-- Header -->
+      <div class="header">
+        <div class="logo-text">🏨 Grand Hotel</div>
+        <h1>Pagamento Recebido com Sucesso!</h1>
+        <span class="badge">✓ Pago</span>
+      </div>
+
+      <!-- Body -->
+      <div class="body">
+
+        <p class="greeting">
+          Olá, <strong>{{guestName}}</strong>!<br/>
+          Confirmamos o recebimento do seu pagamento. Abaixo está o comprovante
+          da transação referente à sua reserva.
+        </p>
+
+        <!-- Amount highlight -->
+        <div class="amount-block">
+          <div class="amount-label">Valor Pago</div>
+          <div class="amount-value">
+            <span class="amount-currency">{{currency}}</span>{{formattedAmount}}
+          </div>
+        </div>
+
+        <!-- Transaction details -->
+        <div class="info-grid">
+          <div class="info-row">
+            <span class="info-label">Reserva</span>
+            <span class="info-value">{{reservationCode}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Forma de Pagamento</span>
+            <span class="info-value">{{paymentMethod}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Data da Transação</span>
+            <span class="info-value">{{paidAt}}</span>
+          </div>
+        </div>
+
+        <p class="note">
+          Guarde este e-mail como comprovante do seu pagamento. Ele pode ser
+          solicitado durante o check-in ou para fins de reembolso.
+        </p>
+
+        <p class="note">
+          Em caso de dúvidas sobre a cobrança, entre em contato com nossa
+          central de atendimento.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>
+          Este é um e-mail automático. Por favor, não responda.<br/>
+          © {{currentYear}} Grand Hotel. Todos os direitos reservados.<br/>
+          <a href="#">Política de Privacidade</a> · <a href="#">Termos de Uso</a>
+        </p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
