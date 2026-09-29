@@ -1,162 +1,110 @@
 /**
  * reservationSchema.ts
  *
- * Zod schemas and TypeScript types for events published by the Hospitality Service
+ * Schemas e tipos TypeScript para eventos publicados pelo Hotel Service
  * (Java / Spring Boot).
  *
- * Contract source:  hospitality-service
- * Transport:        RabbitMQ topic exchange, routing key pattern `reservation.*`
- * Idempotency key:  envelope.eventId (UUID)
+ * Formato de entrega (RabbitMQ via NestJS Microservices):
+ *   { "pattern": "reservation.confirmed", "data": { ReservationEventEnvelope } }
+ *
+ * O desempacotamento do wrapper { pattern, data } é feito no eventRouter.ts.
+ * Este módulo valida apenas o envelope interno (ReservationEventEnvelope).
  */
 
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
-// ReservationEventType enum
+// Tipos de evento de reserva suportados
 // ---------------------------------------------------------------------------
 
 export enum ReservationEventType {
-  RESERVA_CONFIRMADA  = 'reservation.confirmed',
-  RESERVA_CRIADA      = 'reservation.created',
-  RESERVA_CANCELADA   = 'reservation.cancelled',
-  RESERVA_CANCELED    = 'reservation.canceled',
+  RESERVATION_CONFIRMED = 'reservation.confirmed',
+  RESERVATION_CREATED   = 'reservation.created',
+  RESERVATION_CANCELLED = 'reservation.cancelled',
+  RESERVATION_CANCELED  = 'reservation.canceled',
 }
 
 // ---------------------------------------------------------------------------
-// UserResponseDTO schema
+// Schema do usuário — UserData (conforme contrato do hotel-service)
 // ---------------------------------------------------------------------------
 
-export const userResponseDTOSchema = z
-  .object({
-    id:          z.number().int().positive().optional(),
-    name:        z.string().optional(),
-    login:       z.string().optional(),
-    email:       z.string().email().optional(),
-    phoneNumber: z.string().optional(),
-    role:        z.string().optional(),
-    imageKey:    z.string().optional(),
-  })
-  .transform((dto) => {
-    const candidateEmail = dto.email ?? dto.login;
-    const emailResult = z.string().email().safeParse(candidateEmail);
-    return {
-      ...dto,
-      resolvedEmail: emailResult.success ? emailResult.data : undefined,
-    };
-  });
+export const userDataSchema = z.object({
+  id:          z.number().int().positive(),
+  /** Nome completo do hóspede. */
+  name:        z.string().min(1),
+  /** E-mail do destinatário — obrigatório conforme contrato. */
+  email:       z.string().email('user.email deve ser um e-mail válido'),
+  phoneNumber: z.string().optional(),
+  role:        z.string().optional(),
+});
 
-export type UserResponseDTO = z.infer<typeof userResponseDTOSchema>;
+export type UserData = z.infer<typeof userDataSchema>;
 
 // ---------------------------------------------------------------------------
-// ReservationDataMessage schema
+// Schema do payload de domínio — ReservationDataMessage
 // ---------------------------------------------------------------------------
 
 export const reservationDataMessageSchema = z
   .object({
-    /** Reservation database primary key ID. */
-    id: z.number().int().positive(),
-
-    // Database fields (snake_case and camelCase supported)
-    check_in_date:      z.string().optional(),
-    checkIn:            z.string().optional(),
-    check_out_date:     z.string().optional(),
-    checkOut:           z.string().optional(),
-    daily_rate:         z.number().optional(),
-    dailyRate:          z.number().optional(),
-    total_amount:       z.number().optional(),
-    totalAmount:        z.number().optional(),
-    discount_amount:    z.number().optional(),
-    discountAmount:     z.number().optional(),
-    service_fee:        z.number().optional(),
-    serviceFee:         z.number().optional(),
-    status_reservation: z.string().optional(),
-    statusReservation:  z.string().optional(),
-    created_at:         z.string().optional(),
-    createdAt:          z.string().optional(),
-    updated_at:         z.string().optional(),
-    updatedAt:          z.string().optional(),
-
-    user_id: z.number().optional(),
-    userId:  z.number().optional(),
-    room_id: z.number().optional(),
-    roomId:  z.number().optional(),
-
-    /** User object (Spring Boot DTO) or top-level user fields. */
-    user:  userResponseDTOSchema.optional(),
-    email: z.string().email().optional(),
-    name:  z.string().optional(),
-
-    /** Booking overrides (optional) */
-    reservationCode: z.string().optional(),
-    totalNights:     z.number().int().positive().optional(),
-    roomType:        z.string().optional(),
-
-    /** Cancellation fields */
+    /** PK da reserva na base de dados. */
+    id:                 z.number().int().positive(),
+    /** Data de check-in no formato ISO "YYYY-MM-DD". */
+    checkInDate:        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkInDate deve ser YYYY-MM-DD'),
+    /** Data de check-out no formato ISO "YYYY-MM-DD". */
+    checkOutDate:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkOutDate deve ser YYYY-MM-DD'),
+    /** Valor da diária em reais (ex: 250.00). */
+    dailyRate:          z.number().nonnegative(),
+    /** Valor total da reserva em reais. */
+    totalAmount:        z.number().nonnegative(),
+    discountAmount:     z.number().nonnegative().optional(),
+    serviceFee:         z.number().nonnegative().optional(),
+    statusReservation:  z.enum(['CREATED', 'CONFIRMED', 'CANCELED', 'PENDING']),
+    createdAt:          z.string(),
+    updatedAt:          z.string(),
+    userId:             z.number().int().positive(),
+    roomId:             z.number().int().positive(),
+    /** Dados do hóspede — contém e-mail e nome para envio do e-mail. */
+    user:               userDataSchema,
     cancellationReason: z.string().optional(),
-    refundAmountCents:  z.number().int().nonnegative().optional(),
-    refundCurrency:     z.string().length(3).optional(),
+    refundAmountCents:  z.number().optional(),
+    refundCurrency:     z.string().optional(),
   })
   .transform((data) => {
-    // Resolve dates
-    const rawCheckIn = data.check_in_date ?? data.checkIn;
-    const rawCheckOut = data.check_out_date ?? data.checkOut;
-
-    // Normalize YYYY-MM-DD
-    const checkIn = rawCheckIn ? rawCheckIn.slice(0, 10) : undefined;
-    const checkOut = rawCheckOut ? rawCheckOut.slice(0, 10) : undefined;
-
-    // Resolve email (user.email -> user.login -> top level email)
-    const resolvedEmail = data.user?.resolvedEmail ?? data.email;
-    if (!resolvedEmail) {
-      throw new Error(
-        `Reservation payload (id=${data.id}) missing valid email address. ` +
-        `Include 'email' or 'login' in user object or at top level.`,
-      );
-    }
-
-    const resolvedName = data.user?.name ?? data.name ?? 'Hóspede';
-
-    // Calculate totalNights if check-in and check-out present
-    let nights = data.totalNights;
-    if (!nights && checkIn && checkOut) {
-      const start = new Date(checkIn).getTime();
-      const end = new Date(checkOut).getTime();
-      if (!isNaN(start) && !isNaN(end) && end > start) {
-        nights = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-      }
-    }
-
-    const code = data.reservationCode ?? `#${data.id}`;
-    const room = data.roomType ?? (data.room_id ?? data.roomId ? `Quarto #${data.room_id ?? data.roomId}` : 'Quarto Standard');
+    // Calcula o total de noites automaticamente com base nas datas
+    const start = new Date(data.checkInDate).getTime();
+    const end   = new Date(data.checkOutDate).getTime();
+    const totalNights =
+      !isNaN(start) && !isNaN(end) && end > start
+        ? Math.ceil((end - start) / (1000 * 60 * 60 * 24))
+        : 1;
 
     return {
       ...data,
-      reservationCode: code,
-      checkIn:          checkIn ?? '2026-10-01',
-      checkOut:         checkOut ?? '2026-10-02',
-      totalNights:      nights ?? 1,
-      roomType:         room,
-      resolvedEmail,
-      resolvedName,
+      /** Código visível ao hóspede — baseado no ID da reserva. */
+      reservationCode: `#${data.id}`,
+      /** Número de noites calculado automaticamente. */
+      totalNights,
+      /** Identificação do quarto reservado. */
+      roomType: `Quarto #${data.roomId}`,
     };
   });
 
 export type ReservationDataMessage = z.infer<typeof reservationDataMessageSchema>;
 
 // ---------------------------------------------------------------------------
-// ReservationMessageEnvelope schema
+// Schema do envelope completo — ReservationEventEnvelope
 // ---------------------------------------------------------------------------
 
 export const reservationMessageEnvelopeSchema = z.object({
-  /** Unique event identifier (UUID v4). Used as the idempotency key. */
-  eventId:      z.string().uuid('eventId must be a valid UUID v4'),
-  eventType:    z.nativeEnum(ReservationEventType).or(z.string()),
-  eventVersion: z.string().min(1),
-  /** ISO-8601 datetime when the event occurred. */
-  occurredAt:   z.string(),
-  source:       z.string().min(1),
+  /** Identificador único do evento (UUID v4) — chave de idempotência. */
+  eventId:       z.string().uuid('eventId deve ser um UUID v4 válido'),
+  eventType:     z.string().min(1),
+  eventVersion:  z.string().min(1),
+  /** Data/hora ISO-8601 em que o evento ocorreu. */
+  occurredAt:    z.string(),
+  source:        z.string().min(1),
   correlationId: z.string().uuid().optional(),
-  data: reservationDataMessageSchema,
+  data:          reservationDataMessageSchema,
 });
 
 export type ReservationMessageEnvelope = z.infer<typeof reservationMessageEnvelopeSchema>;

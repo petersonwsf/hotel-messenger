@@ -1,7 +1,7 @@
 /**
  * reservationSchema.test.ts
  *
- * Unit tests for the ReservationMessageEnvelope Zod schema.
+ * Testes unitários para o schema ReservationMessageEnvelope.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -13,74 +13,95 @@ import {
 const BASE_USER = {
   id:          1,
   name:        'João Costa',
-  login:       'joao@example.com',
+  email:       'joao@example.com',
   phoneNumber: '+55 11 99999-0000',
   role:        'GUEST',
-  imageKey:    'avatars/joao.jpg',
 };
 
-const BASE_DATA_CONFIRMED = {
-  id:                 101,
-  check_in_date:      '2026-10-01',
-  check_out_date:     '2026-10-05',
-  daily_rate:         25000,
-  total_amount:       100000,
-  discount_amount:    0,
-  service_fee:        500,
-  status_reservation: 'CONFIRMED',
-  user_id:            1,
-  room_id:            12,
-  user:               BASE_USER,
+const BASE_DATA = {
+  id:                101,
+  checkInDate:       '2026-10-01',
+  checkOutDate:      '2026-10-05',
+  dailyRate:         25000,
+  totalAmount:       100000,
+  discountAmount:    0,
+  serviceFee:        500,
+  statusReservation: 'CONFIRMED' as const,
+  createdAt:         '2026-09-01T10:00:00.000Z',
+  updatedAt:         '2026-09-01T10:00:00.000Z',
+  userId:            1,
+  roomId:            12,
+  user:              BASE_USER,
 };
 
 const VALID_ENVELOPE = {
   eventId:      '660e8400-e29b-41d4-a716-446655440001',
-  eventType:    ReservationEventType.RESERVA_CONFIRMADA,
+  eventType:    ReservationEventType.RESERVATION_CONFIRMED,
   eventVersion: '1.0',
   occurredAt:   '2026-09-28T19:00:00.000Z',
-  source:       'hospitality-service',
-  data:         BASE_DATA_CONFIRMED,
+  source:       'hotel-service',
+  data:         BASE_DATA,
 };
 
 describe('reservationMessageEnvelopeSchema — happy path', () => {
-  it('accepts a valid reservation envelope with DB fields', () => {
+  it('aceita envelope de reserva confirmada com campos camelCase', () => {
     const result = reservationMessageEnvelopeSchema.safeParse(VALID_ENVELOPE);
     expect(result.success).toBe(true);
     if (result.success) {
+      // Código gerado automaticamente pelo schema
       expect(result.data.data.reservationCode).toBe('#101');
+      // Noites calculadas automaticamente: 01/10 → 05/10 = 4 noites
       expect(result.data.data.totalNights).toBe(4);
-      expect(result.data.data.resolvedEmail).toBe('joao@example.com');
+      // Quarto derivado do roomId
       expect(result.data.data.roomType).toBe('Quarto #12');
+      // Email e nome do user
+      expect(result.data.data.user.email).toBe('joao@example.com');
+      expect(result.data.data.user.name).toBe('João Costa');
     }
   });
 
-  it('prefers explicit email field over login when both are present', () => {
-    const envelope = {
+  it('aceita envelope reservation.cancelled', () => {
+    const result = reservationMessageEnvelopeSchema.safeParse({
       ...VALID_ENVELOPE,
-      data: {
-        ...BASE_DATA_CONFIRMED,
-        user: { ...BASE_USER, email: 'explicit@example.com', login: 'not-used-login' },
-      },
-    };
-    const result = reservationMessageEnvelopeSchema.safeParse(envelope);
+      eventType: ReservationEventType.RESERVATION_CANCELLED,
+      data: { ...BASE_DATA, cancellationReason: 'Pedido do hóspede' },
+    });
     expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.data.resolvedEmail).toBe('explicit@example.com');
-    }
+  });
+});
+
+describe('reservationMessageEnvelopeSchema — validação de campos obrigatórios', () => {
+  it('rejeita quando user.email está ausente', () => {
+    const { email, ...userSemEmail } = BASE_USER;
+    void email;
+    const result = reservationMessageEnvelopeSchema.safeParse({
+      ...VALID_ENVELOPE,
+      data: { ...BASE_DATA, user: userSemEmail },
+    });
+    expect(result.success).toBe(false);
   });
 
-  it('accepts RESERVA_CANCELADA envelope', () => {
-    const cancelledEnvelope = {
+  it('rejeita user.email inválido', () => {
+    const result = reservationMessageEnvelopeSchema.safeParse({
       ...VALID_ENVELOPE,
-      eventType: ReservationEventType.RESERVA_CANCELADA,
-      data: {
-        ...BASE_DATA_CONFIRMED,
-        cancellationReason: 'Guest request',
-        refundAmountCents: 100000,
-        refundCurrency: 'BRL',
-      },
-    };
-    const result = reservationMessageEnvelopeSchema.safeParse(cancelledEnvelope);
-    expect(result.success).toBe(true);
+      data: { ...BASE_DATA, user: { ...BASE_USER, email: 'nao-e-email' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejeita checkInDate fora do formato YYYY-MM-DD', () => {
+    const result = reservationMessageEnvelopeSchema.safeParse({
+      ...VALID_ENVELOPE,
+      data: { ...BASE_DATA, checkInDate: '01/10/2026' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejeita eventId que não é UUID', () => {
+    const result = reservationMessageEnvelopeSchema.safeParse({
+      ...VALID_ENVELOPE,
+      eventId: 'nao-e-uuid',
+    });
+    expect(result.success).toBe(false);
   });
 });

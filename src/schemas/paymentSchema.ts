@@ -1,47 +1,51 @@
 /**
  * paymentSchema.ts
  *
- * Zod schemas and TypeScript types for events published by the Payments Service.
+ * Schemas e tipos TypeScript para eventos publicados pelo Payments Service.
  *
- * Contract source:  payments-service (Node.js / TypeScript)
- * Transport:        RabbitMQ topic exchange, routing key pattern `payment.*`
- * Idempotency key:  envelope.eventId (UUID)
- */
+ * Formato de entrega (RabbitMQ via NestJS Microservices):
+ *   { "pattern": "payment.captured", "data": { PaymentEventEnvelope  } }
+ *
+ * O desempacotamento do wrapper { pattern, data } é feito no eventRouter.ts.
+ * Este módulo valida apenas o envelope interno (PaymentEventEnvelope).
+ **/
 
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
-// Enums
+// Tipos literais / Enums (conforme contrato do payments-service)
 // ---------------------------------------------------------------------------
 
-export enum PaymentStatus {
-  PENDING    = 'PENDING',
-  AUTHORIZED = 'AUTHORIZED',
-  CAPTURED   = 'CAPTURED',
-  FAILED     = 'FAILED',
-  REFUNDED   = 'REFUNDED',
-  CANCELLED  = 'CANCELLED',
-  CANCELED   = 'CANCELED',
-}
+export const PaymentStatusSchema = z.enum([
+  'AUTHORIZED',
+  'CAPTURED',
+  'REFUNDED',
+  'FAILED',
+  'CANCELLED',
+]);
+export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 
-export enum CaptureMethod {
-  AUTOMATIC = 'AUTOMATIC',
-  MANUAL    = 'MANUAL',
-}
+export const CaptureMethodSchema = z.enum(['AUTOMATIC', 'MANUAL']);
+export type CaptureMethod = z.infer<typeof CaptureMethodSchema>;
 
-export enum PaymentEventType {
-  PAYMENT_CREATED         = 'payment.created',
-  PAYMENT_REQUIRES_ACTION = 'payment.requires_action',
-  PAYMENT_AUTHORIZED      = 'payment.authorized',
-  PAYMENT_CAPTURED        = 'payment.captured',
-  PAYMENT_CANCELED        = 'payment.canceled',
-  PAYMENT_FAILED          = 'payment.failed',
-  PAYMENT_REFUNDED        = 'payment.refunded',
-  BOLETO_GENERATED        = 'boleto.generated',
+export const PaymentEventTypeSchema = z.enum([
+  'payment.authorized',
+  'payment.captured',
+  'payment.refunded',
+  'payment.failed',
+]);
+export type PaymentEventType = z.infer<typeof PaymentEventTypeSchema>;
+
+// Mantido como enum TS para uso no notificationAdapters.ts
+export enum PaymentEventType_Enum {
+  PAYMENT_AUTHORIZED = 'payment.authorized',
+  PAYMENT_CAPTURED   = 'payment.captured',
+  PAYMENT_REFUNDED   = 'payment.refunded',
+  PAYMENT_FAILED     = 'payment.failed',
 }
 
 // ---------------------------------------------------------------------------
-// PaymentDataBase schema
+// Schema do payload de domínio — PaymentDataBase
 // ---------------------------------------------------------------------------
 
 export const paymentDataBaseSchema = z
@@ -49,82 +53,45 @@ export const paymentDataBaseSchema = z
     paymentId:             z.number().int().positive(),
     reservationId:         z.number().int().positive(),
     userId:                z.number().int().positive(),
-    stripePaymentIntentId: z.string().optional(),
-
-    /** Customer email address (supports recipientEmail, email, or customerEmail). */
-    recipientEmail: z.string().email().optional(),
-    email:          z.string().email().optional(),
-    customerEmail:  z.string().email().optional(),
-
-    /** Customer full name (supports recipientName, name, or customerName). */
-    recipientName: z.string().optional(),
-    name:          z.string().optional(),
-    customerName:  z.string().optional(),
-
-    /** Optional human-readable payment method label. */
-    paymentMethodLabel: z.string().optional(),
-
-    /** Amounts in cents. amountCaptured is used as the email charged amount. */
-    amountAuthorized: z.number().int().nonnegative().optional(),
-    amountCaptured:   z.number().int().nonnegative(),
-    /** ISO 4217 currency code (e.g. "BRL", "USD"). */
-    currency:         z.string().length(3).default('BRL'),
-
-    status:        z.nativeEnum(PaymentStatus).or(z.string()),
-    captureMethod: z.nativeEnum(CaptureMethod).or(z.string()),
-
-    createdAt: z.string().optional(),
-    updatedAt: z.string().optional(),
+    /** E-mail do destinatário — obrigatório conforme contrato acordado. */
+    recipientEmail:        z.string().email('recipientEmail deve ser um e-mail válido'),
+    /** Nome do cliente — obrigatório para personalização do e-mail. */
+    recipientName:         z.string().min(1, 'recipientName não pode ser vazio'),
+    stripePaymentIntentId: z.string().min(1),
+    amountAuthorized:      z.number().int().nonnegative(),
+    /** Valor efetivamente cobrado — usado no e-mail de comprovante. */
+    amountCaptured:        z.number().int().nonnegative(),
+    /** Código ISO 4217 (ex: "BRL"). */
+    currency:              z.string().length(3),
+    status:                PaymentStatusSchema,
+    /** AUTOMATIC → Boleto | MANUAL → Cartão de crédito */
+    captureMethod:         CaptureMethodSchema,
+    createdAt:             z.string(),
+    updatedAt:             z.string(),
   })
-  .transform((data) => {
-    const resolvedEmail = data.recipientEmail ?? data.email ?? data.customerEmail;
-    if (!resolvedEmail || !z.string().email().safeParse(resolvedEmail).success) {
-      throw new Error(
-        'Payment payload missing valid recipient email (recipientEmail, email, or customerEmail required)',
-      );
-    }
-    const resolvedName = data.recipientName ?? data.name ?? data.customerName ?? 'Cliente';
-
-    // Automatic captureMethod label mapping:
-    // AUTOMATIC = Boleto, MANUAL = Cartão de crédito
-    let resolvedMethod = data.paymentMethodLabel;
-    if (!resolvedMethod) {
-      if (data.captureMethod === CaptureMethod.AUTOMATIC || data.captureMethod === 'AUTOMATIC') {
-        resolvedMethod = 'Boleto';
-      } else if (data.captureMethod === CaptureMethod.MANUAL || data.captureMethod === 'MANUAL') {
-        resolvedMethod = 'Cartão de crédito';
-      } else {
-        resolvedMethod = 'Cartão de crédito';
-      }
-    }
-
-    return {
-      ...data,
-      recipientEmail:     resolvedEmail,
-      recipientName:      resolvedName,
-      paymentMethodLabel: resolvedMethod,
-    };
-  });
+  .transform((data) => ({
+    ...data,
+    // Tradução de captureMethod para rótulo legível usado no template de e-mail
+    paymentMethodLabel:
+      data.captureMethod === 'AUTOMATIC' ? 'Boleto' : 'Cartão de crédito',
+  }));
 
 export type PaymentDataBase = z.infer<typeof paymentDataBaseSchema>;
 
 // ---------------------------------------------------------------------------
-// PaymentEventEnvelope schema
+// Schema do envelope completo — PaymentEventEnvelope
 // ---------------------------------------------------------------------------
 
 export const paymentEventEnvelopeSchema = z.object({
-  /** Unique event identifier (UUID v4). Used as the idempotency key. */
-  eventId:      z.string().uuid('eventId must be a valid UUID v4'),
-  eventType:    z.nativeEnum(PaymentEventType),
-  eventVersion: z.string().min(1),
-  /** ISO-8601 datetime when the event occurred. */
-  occurredAt:   z.string(),
-  source:       z.literal('payments-service'),
+  /** Identificador único do evento (UUID v4) — chave de idempotência. */
+  eventId:       z.string().uuid('eventId deve ser um UUID v4 válido'),
+  eventType:     PaymentEventTypeSchema,
+  eventVersion:  z.string().min(1),
+  /** Data/hora ISO-8601 em que o evento ocorreu. */
+  occurredAt:    z.string(),
+  source:        z.literal('payments-service'),
   correlationId: z.string().uuid().optional(),
-  data: paymentDataBaseSchema,
+  data:          paymentDataBaseSchema,
 });
 
 export type PaymentEventEnvelope = z.infer<typeof paymentEventEnvelopeSchema>;
-
-export type PaymentEventEnvelopeOf<T extends PaymentEventType> =
-  Omit<PaymentEventEnvelope, 'eventType'> & { eventType: T };

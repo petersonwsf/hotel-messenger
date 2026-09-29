@@ -53,9 +53,9 @@ const reservaConfirmadaSchema = baseEventSchema.extend({
   /** Reservation unique code shown to the guest. */
   reservationCode: z.string().min(1),
   /** Check-in date as ISO-8601 string (YYYY-MM-DD). */
-  checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkIn must be YYYY-MM-DD'),
+  checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkIn must be YYYY-MM-DD'),
   /** Check-out date as ISO-8601 string (YYYY-MM-DD). */
-  checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkOut must be YYYY-MM-DD'),
+  checkOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkOut must be YYYY-MM-DD'),
   /** Room category (e.g. "Superior", "Deluxe Suite"). */
   roomType: z.string().min(1),
   /** Total number of nights derived at publish time; avoids date math in the service. */

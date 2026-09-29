@@ -102,26 +102,29 @@ async function handleMessage(
   msg: amqp.ConsumeMessage,
   channel: amqp.Channel,
 ): Promise<void> {
-  const rawContent  = msg.content.toString();
-  const routingKey  = msg.fields.routingKey;
+  const rawContent    = msg.content.toString();
+  // routingKey do AMQP — usado apenas para logging; o roteamento real lê de msg.pattern
+  const routingKey    = msg.fields.routingKey;
   const correlationId = msg.properties.correlationId as string | undefined;
 
   // ------------------------------------------------------------------
-  // Step 1 & 2: Route message + schema validation
+  // Step 1 & 2: Desempacota wrapper { pattern, data } + valida schema
   // ------------------------------------------------------------------
   let routed: ReturnType<typeof routeMessage>;
   try {
-    routed = routeMessage(routingKey, rawContent);
+    // routeMessage lê o routing key do campo `pattern` dentro do JSON
+    routed = routeMessage(rawContent);
   } catch (err) {
     if (err instanceof RouterError) {
-      logger.error('Unknown routing key — routing to DLQ', {
+      logger.error('Pattern/routing key desconhecido — enviando para DLQ', {
         routingKey,
-        error: err.message,
+        pattern: err.routingKey,
+        error:   err.message,
       });
     } else if (err instanceof z.ZodError) {
-      // ZodError is already logged inside routeMessage; just nack
+      // ZodError já logado dentro de routeMessage
     } else {
-      logger.error('Failed to parse message — routing to DLQ', {
+      logger.error('Falha ao processar mensagem — enviando para DLQ', {
         routingKey,
         error: err instanceof Error ? err.message : String(err),
       });

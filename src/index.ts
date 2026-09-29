@@ -35,7 +35,7 @@ const MAX_RECONNECT_DELAY_MS = 30_000;
 // Graceful shutdown state
 // ---------------------------------------------------------------------------
 
-let activeConnection: amqp.Connection | null = null;
+let activeConnection: amqp.ChannelModel | null = null;
 let activeChannel:    amqp.Channel    | null = null;
 let isShuttingDown = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;

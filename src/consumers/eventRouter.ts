@@ -1,20 +1,33 @@
 /**
  * eventRouter.ts
  *
- * Inspects incoming RabbitMQ messages and routes them to the correct
- * schema parser based on the message's routing key.
+ * Desempacota e roteia mensagens do RabbitMQ no padrão de Microserviços NestJS ({ pattern, data }),
+ * encaminhando o envelope interno para validação nos schemas Zod correspondentes.
  *
- * Supported routing key patterns (bound in rabbitmq.ts):
- *   payment.*      → PaymentEventEnvelope   (Payments Service)
- *   reservation.*  → ReservationMessageEnvelope (Hospitality Service)
+ * Formato de entrada unificado:
+ * {
+ *   "pattern": "payment.captured",         ← Routing Key usada para direcionamento
+ *   "data": {                              ← Envelope do evento (PaymentEventEnvelope | MessageDataEnvelope)
+ *     "eventId": "uuid",
+ *     "eventType": "payment.captured",
+ *     "eventVersion": "1.0",
+ *     "occurredAt": "2026-09-29T13:40:00.000Z",
+ *     "source": "payments-service",        ← "payments-service" | "hotel-service"
+ *     "correlationId": "uuid",
+ *     "data": { ... }                      ← Payload de domínio (PaymentDataBase | ReservationDataMessage)
+ *   }
+ * }
  *
- * Design:
- *  - Routing key is extracted from amqplib's `msg.fields.routingKey`.
- *  - The router returns a typed `RoutedEvent` discriminated union so the
- *    consumer has full type-safety without re-parsing or casting.
- *  - Unknown routing keys are rejected with a `RouterError` — the consumer
- *    nacks them to the DLQ.
- */
+ * Mapeamento de Roteamento (pattern):
+ *   - payment.*     → PaymentEventEnvelope   (dados do payments-service)
+ *   - reservation.* → ReservationEventEnvelope (dados do hotel-service/Spring)
+ *
+ * Fluxo de Processamento:
+ *   1. Extrai a propriedade `pattern` do nó raiz para decidir o handler.
+ *   2. Desencapsula o objeto `data` da raiz para obter o envelope do evento.
+ *   3. Executa a validação do schema Zod correspondente ao evento.
+ *   4. Dispara o envio de e-mail via serviços de templates.
+ **/
 
 import { z } from 'zod';
 import {
@@ -28,7 +41,23 @@ import {
 import { logger } from '../services/logger.js';
 
 // ---------------------------------------------------------------------------
-// Discriminated union of all routed event types
+// Schema do wrapper externo { pattern, data }
+// ---------------------------------------------------------------------------
+
+/**
+ * Valida o envelope externo publicado pelo NestJS Microservices.
+ * O campo `data` é mantido como `unknown` — cada branch faz sua própria
+ * validação Zod específica logo em seguida.
+ */
+const rootWrapperSchema = z.object({
+  /** Routing key utilizada para roteamento (ex: "payment.captured"). */
+  pattern: z.string().min(1, 'Campo "pattern" ausente na mensagem'),
+  /** Envelope interno do evento (PaymentEventEnvelope ou ReservationEventEnvelope). */
+  data:    z.unknown(),
+});
+
+// ---------------------------------------------------------------------------
+// Union de eventos roteados
 // ---------------------------------------------------------------------------
 
 export type RoutedEvent =
@@ -36,7 +65,7 @@ export type RoutedEvent =
   | { source: 'hospitality-service'; event: ReservationMessageEnvelope };
 
 // ---------------------------------------------------------------------------
-// Custom error
+// Erro de roteamento
 // ---------------------------------------------------------------------------
 
 export class RouterError extends Error {
@@ -50,64 +79,107 @@ export class RouterError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// Router
+// Router principal
 // ---------------------------------------------------------------------------
 
 /**
- * Parses and routes a raw RabbitMQ message body by its routing key.
+ * Desempacota o wrapper `{ pattern, data }`, extrai o routing key do campo
+ * `pattern` e valida o envelope interno com o schema Zod correspondente.
  *
- * @param routingKey  - AMQP routing key from `msg.fields.routingKey`
- * @param rawBody     - `msg.content.toString()` (raw JSON string)
- * @returns           A strongly-typed `RoutedEvent` union member.
- * @throws `RouterError`  if the routing key is unrecognised.
- * @throws `Error`        if JSON parsing fails.
- * @throws `z.ZodError`   if schema validation fails (captured by caller).
+ * @param rawBody - Conteúdo bruto da mensagem RabbitMQ (JSON string).
+ * @returns RoutedEvent tipado — discriminado por `source`.
+ * @throws `Error`        se o JSON for inválido.
+ * @throws `RouterError`  se o `pattern` não for reconhecido.
+ * @throws `z.ZodError`   se o envelope interno não passar na validação.
  */
-export function routeMessage(routingKey: string, rawBody: string): RoutedEvent {
-  logger.debug('Routing incoming message', { routingKey });
-
-  let parsed: unknown;
+export function routeMessage(rawBody: string): RoutedEvent {
+  // ---- 1. Parse do JSON bruto -----------------------------------------
+  let root: unknown;
   try {
-    parsed = JSON.parse(rawBody);
+    root = JSON.parse(rawBody);
   } catch {
-    throw new Error(`Failed to parse message JSON for routing key "${routingKey}"`);
+    throw new Error('Falha ao parsear JSON da mensagem recebida da fila');
   }
 
-  if (routingKey.startsWith('payment.')) {
-    const result = paymentEventEnvelopeSchema.safeParse(parsed);
-    if (!result.success) {
-      logValidationFailure(routingKey, result.error);
-      throw result.error;
-    }
-    return { source: 'payments-service', event: result.data };
+  // ---- 2. Valida wrapper externo { pattern, data } --------------------
+  const wrapperResult = rootWrapperSchema.safeParse(root);
+  if (!wrapperResult.success) {
+    // Mensagem pode ser um envelope "direto" (sem wrapper) — tenta fallback
+    return routeEnvelopeDirect(root);
   }
 
-  if (routingKey.startsWith('reservation.')) {
-    const result = reservationMessageEnvelopeSchema.safeParse(parsed);
-    if (!result.success) {
-      logValidationFailure(routingKey, result.error);
-      throw result.error;
-    }
-    return { source: 'hospitality-service', event: result.data };
-  }
+  const { pattern, data: envelopePayload } = wrapperResult.data;
+  logger.debug('Roteando mensagem', { pattern });
 
-  throw new RouterError(
-    `No handler registered for routing key "${routingKey}". ` +
-    'Supported prefixes: payment.*, reservation.*',
-    routingKey,
-  );
+  // ---- 3. Roteia pelo pattern -----------------------------------------
+  return parseEnvelope(pattern, envelopePayload);
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function logValidationFailure(routingKey: string, error: z.ZodError): void {
-  logger.error('Schema validation failed for incoming message', {
-    routingKey,
+/**
+ * Tenta rotear uma mensagem SEM wrapper (envelope direto).
+ * Usado como fallback para compatibilidade retroativa.
+ */
+function routeEnvelopeDirect(raw: unknown): RoutedEvent {
+  // Extrai a routing key de `eventType` no próprio envelope
+  const maybe = raw as Record<string, unknown> | null;
+  const eventType = typeof maybe?.['eventType'] === 'string' ? maybe['eventType'] : '';
+  const source    = typeof maybe?.['source']    === 'string' ? maybe['source']    : '';
+
+  if (eventType.startsWith('payment.') || source === 'payments-service') {
+    return parseEnvelope(eventType || 'payment.unknown', raw);
+  }
+
+  if (eventType.startsWith('reservation.') || source === 'hotel-service' || source === 'hospitality-service') {
+    return parseEnvelope(eventType || 'reservation.unknown', raw);
+  }
+
+  throw new RouterError(
+    `Routing key/pattern não reconhecido. ` +
+    `Prefixos suportados: payment.*, reservation.*. ` +
+    `Recebido: eventType="${eventType}", source="${source}"`,
+    eventType,
+  );
+}
+
+/**
+ * Valida o envelope interno com o schema Zod correto conforme o pattern/routing key.
+ */
+function parseEnvelope(pattern: string, payload: unknown): RoutedEvent {
+  if (pattern.startsWith('payment.')) {
+    const result = paymentEventEnvelopeSchema.safeParse(payload);
+    if (!result.success) {
+      logValidationFailure(pattern, result.error);
+      throw result.error;
+    }
+    return { source: 'payments-service', event: result.data };
+  }
+
+  if (pattern.startsWith('reservation.')) {
+    const result = reservationMessageEnvelopeSchema.safeParse(payload);
+    if (!result.success) {
+      logValidationFailure(pattern, result.error);
+      throw result.error;
+    }
+    return { source: 'hospitality-service', event: result.data };
+  }
+
+  throw new RouterError(
+    `Nenhum handler registrado para o pattern "${pattern}". ` +
+    'Prefixos suportados: payment.*, reservation.*',
+    pattern,
+  );
+}
+
+function logValidationFailure(pattern: string, error: z.ZodError): void {
+  logger.error('Falha na validação do schema da mensagem recebida', {
+    pattern,
     issues: error.issues.map((i) => ({
-      path:    i.path.join('.'),
-      message: i.message,
+      campo:     i.path.join('.'),
+      mensagem:  i.message,
     })),
   });
 }

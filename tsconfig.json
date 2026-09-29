@@ -1,20 +1,38 @@
 {
   "compilerOptions": {
+    // Alvo de compilação: ES2022 garante suporte a top-level await, WeakRef etc.
     "target": "ES2022",
-    "module": "CommonJS",
+
+    // NodeNext: habilita ESM nativo no Node.js.
+    // Exige extensão .js em todos os imports relativos (mesmo que o arquivo fonte seja .ts).
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
     "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./src",
+
+    // Fornece os tipos globais do Node.js (process, Buffer, __dirname, etc.)
+    "types": ["node"],
+
+    // --- Rigor de tipos ---
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "exactOptionalPropertyTypes": true,
+
+    // Necessário para importar módulos CJS (amqplib, handlebars) com import default
     "esModuleInterop": true,
+
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+
+    // Permite importar arquivos .json com import
     "resolveJsonModule": true,
+
+    // Artefatos de build
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true

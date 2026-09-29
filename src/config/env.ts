@@ -58,9 +58,9 @@ const envSchema = z.object({
   RABBITMQ_PREFETCH_COUNT: z
     .string()
     .regex(/^\d+$/, 'RABBITMQ_PREFETCH_COUNT must be a positive integer')
+    .default('1')
     .transform(Number)
-    .pipe(z.number().int().positive())
-    .default('1'),
+    .pipe(z.number().int().positive()),
 
   /** Resend API key — must NOT be logged. */
   RESEND_API_KEY: z

@@ -27,7 +27,7 @@
     .res-code { font-size: 28px; font-weight: 800; color: #744210; letter-spacing: 0.12em; font-family: 'Courier New', monospace; }
 
     .info-grid { background: #fffaf0; border: 1px solid #f6ad55; border-radius: 10px; padding: 24px; margin-bottom: 28px; }
-    .info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #feebc8; }
+    .info-row { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1rem; padding: 10px 0; border-bottom: 1px solid #feebc8; }
     .info-row:last-child { border-bottom: none; padding-bottom: 0; }
     .info-label { font-size: 12px; font-weight: 600; color: #c05621; text-transform: uppercase; letter-spacing: 0.06em; }
     .info-value { font-size: 15px; font-weight: 600; color: #744210; text-align: right; max-width: 60%; }
@@ -50,9 +50,8 @@
 
       <!-- Header -->
       <div class="header">
-        <div class="logo-text">🏨 Grand Hotel</div>
+        <div class="logo-text">Lúmen Hotel</div>
         <h1>Reserva Cancelada</h1>
-        <span class="badge">✕ Cancelado</span>
       </div>
 
       <!-- Body -->
@@ -60,8 +59,7 @@
 
         <p class="greeting">
           Olá, <strong>{{guestName}}</strong>.<br/>
-          Lamentamos informar que a sua reserva foi cancelada. Abaixo estão
-          os detalhes do cancelamento.
+          Sua reserva foi cancelada. Abaixo estão os detalhes do cancelamento.
         </p>
 
         <!-- Reservation code -->
