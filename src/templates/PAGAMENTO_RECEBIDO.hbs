@@ -3,52 +3,73 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
   <title>Pagamento Recebido</title>
   <style>
+    /* Paleta azul baseada em #0033AD
+       --blue-900: #001F6B  (gradiente / texto escuro)
+       --blue-700: #0033AD  (cor principal)
+       Cinzas do card: fundo #F3F3F3 / borda #D4D4D4
+       Verde para destaque do valor: #f0fff4 / #9ae6b4 / #276749
+    */
+    :root { color-scheme: light; supported-color-schemes: light; }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background-color: #f4f5f7; font-family: 'Helvetica Neue', Arial, sans-serif; color: #2d3748; }
+    body { background-color: #eef2fb; font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2a44; }
 
     .wrapper { max-width: 620px; margin: 0 auto; padding: 32px 16px; }
-    .card { background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+    .card { background: #F3F3F3; border: 1px solid #D4D4D4; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0, 51, 173, 0.12); }
 
-    /* Header — green palette for "success/payment" */
-    .header { background: linear-gradient(135deg, #1c4532 0%, #276749 100%); padding: 40px 40px 32px; text-align: center; }
-    .header .logo-text { font-size: 22px; font-weight: 700; color: #9ae6b4; letter-spacing: 0.08em; text-transform: uppercase; }
-    .header h1 { font-size: 26px; font-weight: 700; color: #ffffff; margin-top: 12px; line-height: 1.3; }
-    .header .badge { display: inline-block; background: rgba(255,255,255,0.15); color: #9ae6b4; border-radius: 999px; font-size: 12px; font-weight: 600; padding: 4px 14px; margin-top: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+    /* Header */
+    .header { background-color: #0033AD; background-image: linear-gradient(135deg, #0033AD 0%, #001F6B 100%); padding: 40px 40px 32px; text-align: center; }
+    .header .logo-text { font-size: 22px; font-weight: 700; color: #fffffe; letter-spacing: 0.08em; text-transform: uppercase; }
+    .header h1 { font-size: 26px; font-weight: 700; color: #fffffe; margin-top: 12px; line-height: 1.3; }
 
     .body { padding: 36px 40px; }
-    .greeting { font-size: 17px; color: #4a5568; line-height: 1.6; margin-bottom: 28px; }
-    .greeting strong { color: #1c4532; }
+    .greeting { font-size: 17px; color: #3c4a6b; line-height: 1.6; margin-bottom: 28px; }
+    .greeting strong { color: #0033AD; }
 
-    /* Amount highlight */
-    .amount-block { text-align: center; background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%); border: 2px solid #9ae6b4; border-radius: 12px; padding: 24px; margin-bottom: 28px; }
+    /* Destaque do valor pago */
+    .amount-block { text-align: center; background: #f0fff4; border: 2px solid #9ae6b4; border-radius: 12px; padding: 24px; margin-bottom: 28px; }
     .amount-label { font-size: 12px; font-weight: 700; color: #276749; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
     .amount-value { font-size: 38px; font-weight: 800; color: #1c4532; }
     .amount-currency { font-size: 18px; font-weight: 600; color: #276749; vertical-align: super; margin-right: 4px; }
 
-    .info-grid { background: #f0fff4; border: 1px solid #9ae6b4; border-radius: 10px; padding: 24px; margin-bottom: 28px; }
-    .info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #c6f6d5; }
+    /* Detalhes */
+    .info-grid { background: #ffffff; border: 1px solid #D4D4D4; border-radius: 10px; padding: 24px; margin-bottom: 28px; }
+    .info-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 12px 0; border-bottom: 1px solid #E2E2E2; }
+    .info-row:first-child { padding-top: 0; }
     .info-row:last-child { border-bottom: none; padding-bottom: 0; }
-    .info-label { font-size: 12px; font-weight: 600; color: #276749; text-transform: uppercase; letter-spacing: 0.06em; }
-    .info-value { font-size: 15px; font-weight: 600; color: #1c4532; text-align: right; }
+    .info-label { font-size: 12px; font-weight: 600; color: #0033AD; text-transform: uppercase; letter-spacing: 0.06em; }
+    .info-value { font-size: 15px; font-weight: 600; color: #1f2a44; }
 
-    .note { font-size: 14px; color: #718096; line-height: 1.7; margin-bottom: 16px; }
+    .note { font-size: 14px; color: #5a6786; line-height: 1.7; margin-bottom: 16px; }
 
-    .footer { background: #f7fafc; border-top: 1px solid #e2e8f0; padding: 24px 40px; text-align: center; }
-    .footer p { font-size: 12px; color: #a0aec0; line-height: 1.6; }
-    .footer a { color: #276749; text-decoration: none; }
+    .footer { background: #EAEAEA; border-top: 1px solid #D4D4D4; padding: 24px 40px; text-align: center; }
+    .footer p { font-size: 12px; color: #6b7280; line-height: 1.6; }
+    .footer a { color: #0033AD; text-decoration: none; }
+
+    /* Modo escuro */
+    @media (prefers-color-scheme: dark) {
+      .header { background-color: #0033AD !important; }
+      .header .logo-text, .header h1, .header font { color: #fffffe !important; }
+    }
+    [data-ogsc] .header .logo-text, [data-ogsc] .header h1, [data-ogsc] .header font { color: #fffffe !important; }
+    [data-ogsb] .header { background-color: #0033AD !important; }
   </style>
 </head>
 <body>
   <div class="wrapper">
-    <div class="card">
+    <div class="card" style="background-color: #F3F3F3; border: 1px solid #D4D4D4;">
 
       <!-- Header -->
-      <div class="header">
-        <div class="logo-text">🏨 Grand Hotel</div>
-        <h1>Pagamento Recebido com Sucesso!</h1>
-        <span class="badge">✓ Pago</span>
+      <div class="header" bgcolor="#0033AD" style="background-color: #0033AD; background-image: linear-gradient(135deg, #0033AD 0%, #001F6B 100%); padding: 40px 40px 32px; text-align: center;">
+        <div class="logo-text" style="font-size: 22px; font-weight: 700; color: #fffffe; letter-spacing: 0.08em; text-transform: uppercase;">
+          <font color="#fffffe">Lúmen Hotel</font>
+        </div>
+        <h1 style="font-size: 26px; font-weight: 700; color: #fffffe; margin-top: 12px; line-height: 1.3;">
+          <font color="#fffffe">Pagamento Recebido!</font>
+        </h1>
       </div>
 
       <!-- Body -->
@@ -60,7 +81,7 @@
           da transação referente à sua reserva.
         </p>
 
-        <!-- Amount highlight -->
+        <!-- Destaque do valor -->
         <div class="amount-block">
           <div class="amount-label">Valor Pago</div>
           <div class="amount-value">
@@ -68,7 +89,7 @@
           </div>
         </div>
 
-        <!-- Transaction details -->
+        <!-- Detalhes da transação -->
         <div class="info-grid">
           <div class="info-row">
             <span class="info-label">Reserva</span>
@@ -99,8 +120,9 @@
       <div class="footer">
         <p>
           Este é um e-mail automático. Por favor, não responda.<br/>
-          © {{currentYear}} Grand Hotel. Todos os direitos reservados.<br/>
-          <a href="#">Política de Privacidade</a> · <a href="#">Termos de Uso</a>
+          © {{currentYear}} Lúmen Hotel. Todos os direitos reservados.<br/>
+          <a href="#">Política de Privacidade</a> · <a href="#">Termos de Uso</a><br/>
+          Reserva {{reservationCode}} · Pago em {{paidAt}}
         </p>
       </div>
 
