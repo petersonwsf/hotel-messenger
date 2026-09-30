@@ -84,13 +84,13 @@ export type PaymentDataBase = z.infer<typeof paymentDataBaseSchema>;
 
 export const paymentEventEnvelopeSchema = z.object({
   /** Identificador único do evento (UUID v4) — chave de idempotência. */
-  eventId:       z.string().uuid('eventId deve ser um UUID v4 válido'),
+  eventId:       z.string(),
   eventType:     PaymentEventTypeSchema,
   eventVersion:  z.string().min(1),
   /** Data/hora ISO-8601 em que o evento ocorreu. */
   occurredAt:    z.string(),
   source:        z.literal('payments-service'),
-  correlationId: z.string().uuid().optional(),
+  correlationId: z.string().nullish(),
   data:          paymentDataBaseSchema,
 });
 
