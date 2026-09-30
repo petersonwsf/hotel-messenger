@@ -18,11 +18,11 @@ import { z } from 'zod';
 // ---------------------------------------------------------------------------
 
 export enum EmailEventType {
+  RESERVA_CRIADA     = 'RESERVA_CRIADA',
   RESERVA_CONFIRMADA = 'RESERVA_CONFIRMADA',
-  PAGAMENTO_RECEBIDO = 'PAGAMENTO_RECEBIDO',
+  RESERVA_ATUALIZADA = 'RESERVA_ATUALIZADA',
   RESERVA_CANCELADA  = 'RESERVA_CANCELADA',
-  // TODO: Add new event types here as they are finalized.
-  // A corresponding .hbs template MUST be created in src/templates/ for each.
+  PAGAMENTO_RECEBIDO = 'PAGAMENTO_RECEBIDO',
 }
 
 // ---------------------------------------------------------------------------
@@ -45,38 +45,42 @@ const baseEventSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Event-specific schemas
+// Shared reservation base — campos compartilhados por todos os eventos de reserva
 // ---------------------------------------------------------------------------
 
-const reservaConfirmadaSchema = baseEventSchema.extend({
-  eventType: z.literal(EmailEventType.RESERVA_CONFIRMADA),
-  /** Reservation unique code shown to the guest. */
+const baseReservationSchema = baseEventSchema.extend({
+  /** Reservation unique code shown to the guest (e.g. "#42"). */
   reservationCode: z.string().min(1),
   /** Check-in date as ISO-8601 string (YYYY-MM-DD). */
-  checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkIn must be YYYY-MM-DD'),
+  checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkInDate must be YYYY-MM-DD'),
   /** Check-out date as ISO-8601 string (YYYY-MM-DD). */
-  checkOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkOut must be YYYY-MM-DD'),
-  /** Room category (e.g. "Superior", "Deluxe Suite"). */
+  checkOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'checkOutDate must be YYYY-MM-DD'),
+  /** Room category (e.g. "Quarto #5"). */
   roomType: z.string().min(1),
   /** Total number of nights derived at publish time; avoids date math in the service. */
   totalNights: z.number().int().positive(),
 });
 
-const pagamentoRecebidoSchema = baseEventSchema.extend({
-  eventType: z.literal(EmailEventType.PAGAMENTO_RECEBIDO),
-  /** Reservation code the payment relates to. */
-  reservationCode: z.string().min(1),
-  /** Amount charged (in smallest currency unit — e.g. cents for BRL). */
-  amountCents: z.number().int().positive(),
-  /** ISO 4217 currency code (e.g. "BRL", "USD"). */
-  currency: z.string().length(3),
-  /**
-   * Human-readable payment method label (e.g. "Cartão de Crédito", "Pix").
-   * Do NOT include card numbers, CVV, or any PCI-sensitive data here.
-   */
-  paymentMethod: z.string().min(1),
-  /** ISO-8601 datetime of the transaction. */
-  paidAt: z.string().datetime(),
+// ---------------------------------------------------------------------------
+// Event-specific schemas
+// ---------------------------------------------------------------------------
+
+const reservaCriadaSchema = baseReservationSchema.extend({
+  eventType: z.literal(EmailEventType.RESERVA_CRIADA),
+});
+
+const reservaConfirmadaSchema = baseReservationSchema.extend({
+  eventType: z.literal(EmailEventType.RESERVA_CONFIRMADA),
+});
+
+const reservaAtualizadaSchema = baseReservationSchema.extend({
+  eventType: z.literal(EmailEventType.RESERVA_ATUALIZADA),
+  /** Status atual da reserva após a atualização. */
+  statusReservation: z.enum(['CREATED', 'CONFIRMED', 'CANCELED', 'PENDING']),
+  /** Taxa diária atualizada (em reais). */
+  dailyRate: z.number().nonnegative(),
+  /** Valor total atualizado da reserva (em reais). */
+  totalAmount: z.number().nonnegative(),
 });
 
 const reservaCanceladaSchema = baseEventSchema.extend({
@@ -94,26 +98,49 @@ const reservaCanceladaSchema = baseEventSchema.extend({
   refundCurrency: z.string().length(3).optional(),
 });
 
+const pagamentoRecebidoSchema = baseEventSchema.extend({
+  eventType: z.literal(EmailEventType.PAGAMENTO_RECEBIDO),
+  /** Reservation code the payment relates to. */
+  reservationCode: z.string().min(1),
+  /** Amount charged (in smallest currency unit — e.g. cents for BRL). */
+  amountCents: z.number().int().positive(),
+  /** ISO 4217 currency code (e.g. "BRL", "USD"). */
+  currency: z.string().length(3),
+  /**
+   * Human-readable payment method label (e.g. "Cartão de Crédito", "Boleto").
+   * Do NOT include card numbers, CVV, or any PCI-sensitive data here.
+   */
+  paymentMethod: z.string().min(1),
+  /** ISO-8601 datetime of the transaction. */
+  paidAt: z.string().datetime(),
+});
+
 // ---------------------------------------------------------------------------
 // Union schema — extend here when adding new event types
 // ---------------------------------------------------------------------------
 
 export const emailEventSchema = z.discriminatedUnion('eventType', [
+  reservaCriadaSchema,
   reservaConfirmadaSchema,
-  pagamentoRecebidoSchema,
+  reservaAtualizadaSchema,
   reservaCanceladaSchema,
+  pagamentoRecebidoSchema,
 ]);
 
 // ---------------------------------------------------------------------------
 // TypeScript types derived from the schemas
 // ---------------------------------------------------------------------------
 
+export type ReservaCriadaEvent     = z.infer<typeof reservaCriadaSchema>;
 export type ReservaConfirmadaEvent = z.infer<typeof reservaConfirmadaSchema>;
-export type PagamentoRecebidoEvent = z.infer<typeof pagamentoRecebidoSchema>;
+export type ReservaAtualizadaEvent = z.infer<typeof reservaAtualizadaSchema>;
 export type ReservaCanceladaEvent  = z.infer<typeof reservaCanceladaSchema>;
+export type PagamentoRecebidoEvent = z.infer<typeof pagamentoRecebidoSchema>;
 
 /** Discriminated union of all supported email event types. */
 export type EmailEvent =
+  | ReservaCriadaEvent
   | ReservaConfirmadaEvent
-  | PagamentoRecebidoEvent
-  | ReservaCanceladaEvent;
+  | ReservaAtualizadaEvent
+  | ReservaCanceladaEvent
+  | PagamentoRecebidoEvent;

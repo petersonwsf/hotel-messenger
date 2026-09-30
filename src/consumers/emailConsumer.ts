@@ -37,9 +37,11 @@ import { adaptPaymentEvent, adaptReservationEvent, AdapterError } from './notifi
 // ---------------------------------------------------------------------------
 
 const EMAIL_SUBJECTS: Record<EmailEventType, string> = {
-  [EmailEventType.RESERVA_CONFIRMADA]: 'Confirmação de Reserva — Grand Hotel',
-  [EmailEventType.PAGAMENTO_RECEBIDO]: 'Pagamento Recebido — Grand Hotel',
-  [EmailEventType.RESERVA_CANCELADA]:  'Cancelamento de Reserva — Grand Hotel',
+  [EmailEventType.RESERVA_CRIADA]:     'Sua Reserva foi Criada — Lúmen Hotel',
+  [EmailEventType.RESERVA_CONFIRMADA]: 'Confirmação de Reserva — Lúmen Hotel',
+  [EmailEventType.RESERVA_ATUALIZADA]: 'Atualização da sua Reserva — Lúmen Hotel',
+  [EmailEventType.RESERVA_CANCELADA]:  'Cancelamento de Reserva — Lúmen Hotel',
+  [EmailEventType.PAGAMENTO_RECEBIDO]: 'Pagamento Recebido — Lúmen Hotel',
 };
 
 // ---------------------------------------------------------------------------
@@ -53,8 +55,28 @@ function enrichTemplateData(event: EmailEvent): Record<string, unknown> {
   };
 
   switch (event.eventType) {
+    case EmailEventType.RESERVA_CRIADA: {
+      // Sem enriquecimento adicional — os campos base são suficientes para o template
+      return base;
+    }
+
     case EmailEventType.RESERVA_CONFIRMADA: {
       return base;
+    }
+
+    case EmailEventType.RESERVA_ATUALIZADA: {
+      return {
+        ...base,
+        statusReservation: event.statusReservation,
+        formattedDailyRate: event.dailyRate.toLocaleString('pt-BR', {
+          style:    'currency',
+          currency: 'BRL',
+        }),
+        formattedTotalAmount: event.totalAmount.toLocaleString('pt-BR', {
+          style:    'currency',
+          currency: 'BRL',
+        }),
+      };
     }
 
     case EmailEventType.PAGAMENTO_RECEBIDO: {
@@ -91,6 +113,10 @@ function enrichTemplateData(event: EmailEvent): Record<string, unknown> {
         cancellationDate: new Date().toLocaleDateString('pt-BR'),
       };
     }
+
+    default:
+      // Garante retorno para tipos futuros (TypeScript exhaustiveness)
+      return base;
   }
 }
 

@@ -20,7 +20,9 @@ import { z } from 'zod';
 export enum ReservationEventType {
   RESERVATION_CONFIRMED = 'reservation.confirmed',
   RESERVATION_CREATED   = 'reservation.created',
+  RESERVATION_UPDATED   = 'reservation.updated',
   RESERVATION_CANCELLED = 'reservation.cancelled',
+  /** Alias sem duplo-L para compatibilidade com clientes que omitem o segundo 'l'. */
   RESERVATION_CANCELED  = 'reservation.canceled',
 }
 
