@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
+  <title>Atualização de Reserva</title>
+  <style>
+    /* Paleta azul baseada em #0033AD
+       --blue-900: #001F6B  (gradiente / texto escuro)
+       --blue-700: #0033AD  (cor principal)
+       --blue-100: #D6E0F5  (bordas suaves)
+       Cinzas do card: fundo #F3F3F3 / borda #D4D4D4
+    */
+    :root { color-scheme: light; supported-color-schemes: light; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background-color: #eef2fb; font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2a44; }
+
+    .wrapper { max-width: 620px; margin: 0 auto; padding: 32px 16px; }
+    .card { background: #F3F3F3; border: 1px solid #D4D4D4; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0, 51, 173, 0.12); }
+
+    /* Header */
+    .header { background-color: #0033AD; background-image: linear-gradient(135deg, #0033AD 0%, #001F6B 100%); padding: 40px 40px 32px; text-align: center; }
+    .header .logo-text { font-size: 22px; font-weight: 700; color: #fffffe; letter-spacing: 0.08em; text-transform: uppercase; }
+    .header h1 { font-size: 26px; font-weight: 700; color: #fffffe; margin-top: 12px; line-height: 1.3; }
+
+    .body { padding: 36px 40px; }
+    .greeting { font-size: 17px; color: #3c4a6b; line-height: 1.6; margin-bottom: 28px; }
+    .greeting strong { color: #0033AD; }
+
+    /* Código da reserva */
+    .res-code-block { text-align: center; background: #ffffff; border: 2px solid #0033AD; border-radius: 12px; padding: 20px; margin-bottom: 28px; }
+    .res-code-label { font-size: 11px; font-weight: 700; color: #0033AD; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+    .res-code { font-size: 28px; font-weight: 800; color: #0033AD; letter-spacing: 0.12em; font-family: 'Courier New', monospace; }
+
+    /* Detalhes */
+    .info-grid { background: #ffffff; border: 1px solid #D4D4D4; border-radius: 10px; padding: 24px; margin-bottom: 28px; }
+    .info-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 12px 0; border-bottom: 1px solid #E2E2E2; }
+    .info-row:first-child { padding-top: 0; }
+    .info-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .info-label { font-size: 12px; font-weight: 600; color: #0033AD; text-transform: uppercase; letter-spacing: 0.06em; }
+    .info-value { font-size: 15px; font-weight: 600; color: #1f2a44; }
+
+    /* Badge de status */
+    .status-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    .status-CONFIRMED  { background: #d1fae5; color: #065f46; }
+    .status-CREATED    { background: #fef3c7; color: #78350f; }
+    .status-PENDING    { background: #fef3c7; color: #78350f; }
+    .status-CANCELED   { background: #fee2e2; color: #7f1d1d; }
+
+    /* Bloco de valores atualizados */
+    .update-block { background: #eef2fb; border: 1px solid #D6E0F5; border-radius: 10px; padding: 18px 20px; margin-bottom: 24px; }
+    .update-block .update-title { font-size: 13px; font-weight: 700; color: #0033AD; margin-bottom: 6px; }
+    .update-block p { font-size: 14px; color: #1f2a44; line-height: 1.6; }
+
+    .note { font-size: 14px; color: #5a6786; line-height: 1.7; margin-bottom: 16px; }
+
+    .footer { background: #EAEAEA; border-top: 1px solid #D4D4D4; padding: 24px 40px; text-align: center; }
+    .footer p { font-size: 12px; color: #6b7280; line-height: 1.6; }
+    .footer a { color: #0033AD; text-decoration: none; }
+
+    /* Modo escuro */
+    @media (prefers-color-scheme: dark) {
+      .header { background-color: #0033AD !important; }
+      .header .logo-text, .header h1, .header font { color: #fffffe !important; }
+    }
+    [data-ogsc] .header .logo-text, [data-ogsc] .header h1, [data-ogsc] .header font { color: #fffffe !important; }
+    [data-ogsb] .header { background-color: #0033AD !important; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="card" style="background-color: #F3F3F3; border: 1px solid #D4D4D4;">
+
+      <!-- Header -->
+      <div class="header" bgcolor="#0033AD" style="background-color: #0033AD; background-image: linear-gradient(135deg, #0033AD 0%, #001F6B 100%); padding: 40px 40px 32px; text-align: center;">
+        <div class="logo-text" style="font-size: 22px; font-weight: 700; color: #fffffe; letter-spacing: 0.08em; text-transform: uppercase;">
+          <font color="#fffffe">Lúmen Hotel</font>
+        </div>
+        <h1 style="font-size: 26px; font-weight: 700; color: #fffffe; margin-top: 12px; line-height: 1.3;">
+          <font color="#fffffe">Sua Reserva foi Atualizada</font>
+        </h1>
+      </div>
+
+      <!-- Body -->
+      <div class="body">
+
+        <p class="greeting">
+          Olá, <strong>{{guestName}}</strong>.<br/>
+          Sua reserva foi atualizada. Confira abaixo as informações mais recentes da sua estadia.
+        </p>
+
+        <!-- Código da reserva -->
+        <div class="res-code-block">
+          <div class="res-code-label">Código da Reserva</div>
+          <div class="res-code">{{reservationCode}}</div>
+        </div>
+
+        <!-- Detalhes atualizados -->
+        <div class="info-grid">
+          <div class="info-row">
+            <span class="info-label">Tipo de Quarto</span>
+            <span class="info-value">{{roomType}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Check-in</span>
+            <span class="info-value">{{checkInDate}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Check-out</span>
+            <span class="info-value">{{checkOutDate}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Total de Diárias</span>
+            <span class="info-value">{{totalNights}} noite(s)</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Diária</span>
+            <span class="info-value">{{formattedDailyRate}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Total da Reserva</span>
+            <span class="info-value">{{formattedTotalAmount}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Status</span>
+            <span class="info-value">
+              <span class="status-badge status-{{statusReservation}}">{{statusReservation}}</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Bloco informativo sobre a atualização -->
+        <div class="update-block">
+          <div class="update-title">ℹ️ O que mudou?</div>
+          <p>
+            Os dados acima refletem as informações mais recentes da sua reserva.
+            Caso não tenha solicitado nenhuma alteração, entre em contato com nossa equipe.
+          </p>
+        </div>
+
+        <p class="note">
+          Se precisar de mais informações ou quiser realizar alterações adicionais,
+          entre em contato com nossa central de atendimento.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>
+          Este é um e-mail automático. Por favor, não responda.<br/>
+          © {{currentYear}} Lúmen Hotel. Todos os direitos reservados.<br/>
+          <a href="#">Política de Privacidade</a> · <a href="#">Termos de Uso</a><br/>
+          Reserva {{reservationCode}} · Atualizada em {{checkInDate}}
+        </p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
