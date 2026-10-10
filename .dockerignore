@@ -1,0 +1,45 @@
+# Arquivos e diretórios de dependências locais
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Artefatos de compilação locais
+dist
+
+# Variáveis de ambiente e segredos locais (NUNCA incluir na imagem)
+.env
+.env.*
+!.env.example
+
+# Controle de versão e metadados git
+.git
+.gitignore
+
+# Logs
+*.log
+
+# Arquivos de testes e relatórios de cobertura
+src/__tests__
+coverage
+vitest.config.*
+
+# Documentações e relatórios de especificação interna
+docks
+CONTRACT_REPORT.md
+README.md
+
+# Configurações de IDE e sistema operacional
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.DS_Store
+Thumbs.db
+
+# Arquivos e configurações Docker
+Dockerfile*
+docker-compose*
+.dockerignore
